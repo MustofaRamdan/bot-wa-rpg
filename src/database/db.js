@@ -192,7 +192,7 @@ function savePlayer(player) {
   PlayerModel.findOneAndUpdate(
     { userId: player.userId },
     { $set: playerData },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   ).catch(err => console.error('❌ MongoDB savePlayer error:', err.message));
 
   return true;
@@ -231,7 +231,7 @@ function saveGuild(guildId, guildData) {
     GuildModel.findOneAndUpdate(
       { guildId },
       { $set: { data: guildData } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     ).catch(err => console.error('❌ MongoDB saveGuild error:', err.message));
   }
   return true;
@@ -279,7 +279,7 @@ function saveWorldBoss(state) {
   WorldBossModel.findByIdAndUpdate(
     'singleton',
     { $set: { data: state } },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   ).catch(err => console.error('❌ MongoDB saveWorldBoss error:', err.message));
 
   return true;
