@@ -90,7 +90,10 @@ async function initDB() {
   
   await mongoose.connect(MONGO_URI, {
     serverSelectionTimeoutMS: 15000,
-    socketTimeoutMS: 45000
+    socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    minPoolSize: 2,
+    heartbeatFrequencyMS: 10000 // Kirim ping setiap 10 detik agar tidak diputus karena idle
   });
 
   console.log('✅ MongoDB berhasil terhubung!');
