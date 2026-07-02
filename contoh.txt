@@ -1,0 +1,1846 @@
+// ================== IMPORTS ==================
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const fs = require('fs');
+const path = require('path');
+
+// ================== DATA PATH ==================
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const PLAYERS_PATH  = path.join(DATA_DIR, 'players.json');
+const GUILDS_PATH   = path.join(DATA_DIR, 'guilds.json');
+const COMMENTS_PATH = path.join(DATA_DIR, 'comments.json');
+const ITEMS_PATH    = path.join(DATA_DIR, 'items.json');
+const MONSTERS_PATH = path.join(DATA_DIR, 'monsters.json');
+
+// ================== LOAD DATA ==================
+let players  = fs.existsSync(PLAYERS_PATH)  ? JSON.parse(fs.readFileSync(PLAYERS_PATH,  'utf8')) : {};
+let guilds   = fs.existsSync(GUILDS_PATH)   ? JSON.parse(fs.readFileSync(GUILDS_PATH,   'utf8')) : {};
+let comments = fs.existsSync(COMMENTS_PATH) ? JSON.parse(fs.readFileSync(COMMENTS_PATH, 'utf8')) : [];
+
+// ================== DEFAULT ITEMS ==================
+const defaultItems = {
+  "potion":          { name: "Health Potion",  type: "consumable", price: 50,   heal: 50  },
+  "super_potion":    { name: "Super Potion",   type: "consumable", price: 150,  heal: 150 },
+  "phoenix_feather": { name: "Phoenix Feather",type: "consumable", price: 500 },
+  "exp_boost":       { name: "EXP Boost",      type: "consumable", price: 1000 },
+  "iron_sword":      { name: "Iron Sword",     type: "weapon",     price: 200,  attack: 8  },
+  "steel_sword":     { name: "Steel Sword",    type: "weapon",     price: 500,  attack: 15 },
+  "dragon_sword":    { name: "Dragon Sword",   type: "weapon",     price: 1500, attack: 25 },
+  "leather_armor":   { name: "Leather Armor",  type: "armor",      price: 150,  defense: 5 },
+  "chain_mail":      { name: "Chain Mail",     type: "armor",      price: 400,  defense: 12 },
+  "dragon_armor":    { name: "Dragon Armor",   type: "armor",      price: 1200, defense: 20 }
+};
+
+// ================== DEFAULT MONSTERS ==================
+const defaultMonsters = [
+  { name: "Slime",   level: 1,  hp: 30,  attack: 5,  defense: 1,  exp: 10,  gold: 5,   drops: ["potion"] },
+  { name: "Goblin",  level: 2,  hp: 50,  attack: 8,  defense: 2,  exp: 20,  gold: 10,  drops: ["iron_sword"] },
+  { name: "Orc",     level: 3,  hp: 80,  attack: 12, defense: 4,  exp: 35,  gold: 20,  drops: ["leather_armor"] },
+  { name: "Troll",   level: 5,  hp: 150, attack: 18, defense: 6,  exp: 60,  gold: 40,  drops: ["steel_sword"] },
+  { name: "Dragon",  level: 10, hp: 300, attack: 30, defense: 15, exp: 150, gold: 100, drops: ["dragon_sword", "dragon_armor"] }
+];
+
+// ================== PET CONFIG ==================
+const PET_TIERS = ["D", "C", "B", "A", "S", "SS", "SSS"];
+
+const petTierConfig = {
+  D:  { bonusAttack: 1,  bonusDefense: 1 },
+  C:  { bonusAttack: 2,  bonusDefense: 2 },
+  B:  { bonusAttack: 4,  bonusDefense: 3 },
+  A:  { bonusAttack: 7,  bonusDefense: 5 },
+  S:  { bonusAttack: 10, bonusDefense: 7 },
+  SS: { bonusAttack: 12, bonusDefense: 8,  petMinDamage: 5,  petMaxDamage: 10 },
+  SSS:{ bonusAttack: 15, bonusDefense: 10, petMinDamage: 10, petMaxDamage: 20 }
+};
+
+// Harga jual otomatis kalau dapat duplikat pet (per tier)
+function getPetAutoSellValue(pet) {
+  if (!pet || !pet.tier) return 0;
+  switch (pet.tier) {
+    case "SSS": return 50000;
+    case "SS":  return 40000;
+    case "S":   return 25000;
+    case "A":   return 10500;
+    case "B":   return 8000;
+    case "C":   return 4000;
+    case "D":   return 2000;
+    default:    return 1000;
+  }
+}
+
+
+// Jenis pet per tier
+const petSpeciesByTier = {
+  D:  ["Slime", "Baby Slime", "Small Boar"],
+  C:  ["Forest Wolf", "Baby Turtle", "Little Golem"],
+  B:  ["Battle Wolf", "Stone Golem", "Fire Lizard"],
+  A:  ["Griffin", "Young Phoenix", "Thunder Tiger"],
+  S:  ["Ancient Phoenix", "Shadow Dragonling", "Holy Griffin"],
+  SS: ["Divine Phoenix", "Abyss Dragon", "Celestial Tiger"],
+  SSS:["Eternal Phoenix", "Void Dragon", "Origin Seraph"]
+};
+
+// Pool tier per jenis telur (probabilitas kira-kira)
+const petEggPools = {
+  common: {
+    tiers: [
+      { tier: "D",  weight: 60 },
+      { tier: "C",  weight: 30 },
+      { tier: "B",  weight: 10 },
+    ]
+  },
+  uncommon: {
+    tiers: [
+      { tier: "C",  weight: 40 },
+      { tier: "B",  weight: 35 },
+      { tier: "A",  weight: 25 },
+    ]
+  },
+  rare: {
+    tiers: [
+      { tier: "B",  weight: 35 },
+      { tier: "A",  weight: 35 },
+      { tier: "S",  weight: 30 },
+    ]
+  },
+  legends: {
+    tiers: [
+      { tier: "A",  weight: 40 },
+      { tier: "S",  weight: 40 },
+      { tier: "SS", weight: 20 },
+    ]
+  },
+  mythic: {
+    tiers: [
+      { tier: "A",   weight: 35 },
+      { tier: "S",   weight: 35 },
+      { tier: "SS",  weight: 20 },
+      { tier: "SSS", weight: 10 }, // paling kecil
+    ]
+  }
+};
+
+// Item telur pet (gacha)
+const petEggItems = {
+  "egg_common":   { name: "Common Pet Egg",   type: "pet_egg", price: 3000,  rarity: "common"  }, // D-B
+  "egg_uncommon": { name: "Uncommon Pet Egg", type: "pet_egg", price: 6000,  rarity: "uncommon"}, // C-A
+  "egg_rare":     { name: "Rare Pet Egg",     type: "pet_egg", price: 250000, rarity: "rare"    }, // B-S
+  "egg_legends":  { name: "Legend Pet Egg",   type: "pet_egg", price: 500000, rarity: "legends" }, // A-SS
+  "egg_mythic":   { name: "Mythic Pet Egg",   type: "pet_egg", price: 1000000, rarity: "mythic"  }, // A-SSS
+};
+
+// ================== LOAD / MERGE ITEMS & MONSTERS ==================
+const itemsRaw     = fs.existsSync(ITEMS_PATH)    ? JSON.parse(fs.readFileSync(ITEMS_PATH,    'utf8')) : defaultItems;
+const monsters     = fs.existsSync(MONSTERS_PATH) ? JSON.parse(fs.readFileSync(MONSTERS_PATH, 'utf8')) : defaultMonsters;
+
+// Merge defaultItems + petEggItems + loaded items
+const items = { ...defaultItems, ...itemsRaw };
+Object.entries(petEggItems).forEach(([key, val]) => {
+  if (!items[key]) items[key] = val;
+});
+
+// Save default data if files don't exist
+if (!fs.existsSync(ITEMS_PATH)) {
+  fs.writeFileSync(ITEMS_PATH, JSON.stringify(items, null, 2));
+}
+if (!fs.existsSync(MONSTERS_PATH)) {
+  fs.writeFileSync(MONSTERS_PATH, JSON.stringify(monsters, null, 2));
+}
+
+// ================== SAVE WRAPPER ==================
+let dirty = { players:false, guilds:false, comments:false };
+
+// pending duel: key = targetUserId (contact.number), value = { challengerId, createdAt }
+let pendingDuels = {};
+
+// ================== WORLD BOSS CONFIG ==================
+const WORLD_BOSS_RESPAWN_MS = 60 * 60 * 1000; // 1 jam
+const BOSS_CHECK_INTERVAL_MS = 60 * 1000;     // cek tiap 1 menit
+
+// Template world boss
+const worldBossTemplates = [
+  {
+    name: "Ancient Dragon",
+    baseHp: 245000,
+    hpPerLevel: 1000,
+    baseAtk: 3000,
+    atkPerLevel: 3.5,
+    baseDef: 5500,
+    defPerLevel: 4.1
+  },
+  {
+    name: "Abyss Leviathan",
+    baseHp: 575000,
+    hpPerLevel: 1200,
+    baseAtk: 4200,
+    atkPerLevel: 3.8,
+    baseDef: 6800,
+    defPerLevel: 4.0
+  },
+  {
+    name: "Celestial Titan",
+    baseHp: 1250000,
+    hpPerLevel: 1380,
+    baseAtk: 5600,
+    atkPerLevel: 5.2,
+    baseDef: 8000,
+    defPerLevel: 3.6
+  }
+];
+
+let worldBoss = {
+  isActive: false,
+  name: "Ancient Dragon",
+  level: 30,
+  maxHp: 245000,
+  hp: 245000,
+  attack: 3000,
+  defense: 5500,
+  nextSpawnAt: 0,
+  lastKilledAt: 0,
+  participants: {}, // userId -> { damage }
+  templateIndex: 0
+};
+
+// Weekly boss leaderboard
+let worldBossWeekStart = Date.now();
+
+// Untuk broadcast notifikasi boss
+const knownChats = new Set();
+
+// ================== SAVE ALL ==================
+function saveAll(force = false) {
+  try {
+    if (dirty.players || force)
+      fs.writeFileSync(PLAYERS_PATH, JSON.stringify(players, null, 2));
+    if (dirty.guilds  || force)
+      fs.writeFileSync(GUILDS_PATH,  JSON.stringify(guilds,  null, 2));
+    if (dirty.comments|| force)
+      fs.writeFileSync(COMMENTS_PATH, JSON.stringify(comments, null, 2));
+
+    dirty = { players:false, guilds:false, comments:false };
+  } catch (error) {
+    console.error("❌ Error saving data:", error);
+  }
+}
+setInterval(saveAll, 30000); // Save tiap 30 detik
+
+// ================== HELPER: PET ==================
+function getEggPool(rarity) {
+  const p = petEggPools[rarity];
+  if (!p) return petEggPools.common.tiers || petEggPools.common;
+  return p.tiers || p;
+}
+
+function rollTierFromPool(poolName) {
+  const pool = getEggPool(poolName);
+  const totalWeight = pool.reduce((sum, e) => sum + e.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const entry of pool) {
+    if (r < entry.weight) return entry.tier;
+    r -= entry.weight;
+  }
+  return pool[0].tier;
+}
+
+function createPetFromTier(tier) {
+  const cfg = petTierConfig[tier] || petTierConfig["D"];
+  const speciesList = petSpeciesByTier[tier] || petSpeciesByTier["D"];
+  const baseName = speciesList[Math.floor(Math.random() * speciesList.length)];
+
+  const elements = ["", "Flame", "Shadow", "Holy", "Dark", "Crystal", "Storm", "Ancient"];
+  let element = elements[Math.floor(Math.random() * elements.length)];
+  if (!element) element = ""; // 50% tanpa prefix
+
+  const fullName = element ? `${element} ${baseName}` : baseName;
+
+  return {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    name: fullName,
+    species: baseName,
+    tier,
+    bonusAttack: cfg.bonusAttack || 0,
+    bonusDefense: cfg.bonusDefense || 0,
+    canAttack: !!cfg.petMinDamage,
+    minDamage: cfg.petMinDamage || 0,
+    maxDamage: cfg.petMaxDamage || 0,
+    createdAt: Date.now()
+  };
+}
+
+function getActivePet(player) {
+  if (!player || !player.pets || !player.pets.length) return null;
+  if (!player.activePetId) return null;
+  return player.pets.find(p => p.id === player.activePetId) || null;
+}
+
+function getPetBonus(player) {
+  const pet = getActivePet(player);
+  if (!pet) return { atk: 0, def: 0 };
+  return {
+    atk: pet.bonusAttack || 0,
+    def: pet.bonusDefense || 0
+  };
+}
+
+// baseDamage = damage murni player (tanpa pet) di hit itu
+function getPetAttackDamage(player, baseDamage) {
+  const pet = getActivePet(player);
+  if (!pet || !pet.canAttack) return 0;
+  if (!baseDamage || baseDamage <= 0) return 0;
+
+  let minMul = 0;
+  let maxMul = 0;
+
+  if (pet.tier === "SS") {
+    // 50% - 100% dari damage kita
+    minMul = 0.5;
+    maxMul = 1.0;
+  } else if (pet.tier === "SSS") {
+    // 150% - 200% dari total damage kita
+    minMul = 1.5;
+    maxMul = 2.0;
+  } else {
+    return 0;
+  }
+
+  const mul = minMul + Math.random() * (maxMul - minMul);
+  const dmg = Math.floor(baseDamage * mul);
+  return Math.max(1, dmg);
+}
+
+
+// ================== RPG HELPERS ==================
+function isNameTaken(name, currentUserId) {
+  return Object.values(players).some(
+    p => p.name.toLowerCase() === name.toLowerCase() && p.userId !== currentUserId
+  );
+}
+const contact = await msg.getContact();
+let userId = contact.number;
+
+if (!userId) {
+    console.log("❌ WA BUG: contact.number kosong. Gunakan msg.author sebagai fallback.");
+    userId = (msg.author || msg.from || "unknown").replace(/\D/g, "");
+}
+function getPlayer(userId) {
+  if (!userId) return null;
+  if (!players[userId]) {
+    players[userId] = {
+      userId,
+      name: "Player_" + String(userId).slice(-4),
+      level: 1,
+      exp: 0,
+      hp: 100,
+      maxHp: 100,
+      baseAttack: 10,
+      baseDefense: 5,
+      gold: 500,
+      bank: 0,
+      inventory: { potion: 3 },
+      equipment: { weapon: null, armor: null },
+      skill: 3,
+      maxSkill: 3,
+      stats: {
+        totalHunts: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        monstersKilled: 0,
+        itemsBought: 0,
+        itemsSold: 0,
+        guildHunts: 0,
+        commentsWritten: 0,
+        commentReplies: 0,
+        currentWinStreak: 0,
+        dailyStreak: 0,
+        worldBossTotalDamage: 0,
+        worldBossWeeklyDamage: 0
+      },
+      quests: {},
+      guild: null,
+      lastDaily: 0,
+      achievements: [],
+      tempEffects: {},
+      cooldown: 0,
+      bossCooldown: 0,
+      pets: [],
+      activePetId: null
+    };
+    dirty.players = true;
+  } else {
+    const p = players[userId];
+    if (p.baseAttack === undefined) p.baseAttack = 10;
+    if (p.baseDefense === undefined) p.baseDefense = 5;
+    if (!p.equipment) p.equipment = { weapon: null, armor: null };
+    if (!p.cooldown) p.cooldown = 0;
+    if (!p.stats) p.stats = {};
+    if (p.stats.worldBossTotalDamage === undefined) p.stats.worldBossTotalDamage = 0;
+    if (p.stats.worldBossWeeklyDamage === undefined) p.stats.worldBossWeeklyDamage = 0;
+    if (!p.pets) p.pets = [];
+    if (typeof p.activePetId === "undefined") p.activePetId = null;
+    if (!p.bossCooldown) p.bossCooldown = 0;
+  }
+  return players[userId];
+}
+
+function savePlayer(player) { players[player.userId] = player; dirty.players = true; }
+
+function getGuild(id) { return guilds[id]; }
+
+function saveGuild(guild) { guilds[guild.id] = guild; dirty.guilds = true; }
+
+function addGuildInvite(guild, userId) {
+  if (!guild.invites.includes(userId)) guild.invites.push(userId);
+  dirty.guilds = true;
+}
+
+function acceptGuildInvite(player, guild) {
+  if (!guild.invites.includes(player.userId)) return false;
+  guild.invites = guild.invites.filter(i => i !== player.userId);
+  guild.members.push(player.userId);
+  player.guild = guild.id;
+  dirty.guilds = true;
+  dirty.players = true;
+  return true;
+}
+
+function removeGuildMember(guild, userId) {
+  guild.members = guild.members.filter(m => m !== userId);
+  dirty.guilds = true;
+}
+
+function isValidName(n) {
+  return /^[a-zA-Z0-9_]{3,20}$/.test(n);
+}
+
+function getRandomMonster(level) {
+  if (!monsters.length) {
+    return {
+      name: "Tutorial Slime",
+      level: 1,
+      hp: 30,
+      exp: 5,
+      gold: 2,
+      attack: 5,
+      defense: 1,
+      drops: []
+    };
+  }
+
+  const filtered = monsters.filter(m => m.level <= level + 2);
+  let chosen;
+  if (filtered.length > 0) {
+    chosen = filtered[Math.floor(Math.random() * filtered.length)];
+  } else {
+    chosen = monsters[Math.floor(Math.random() * monsters.length)];
+  }
+
+  return {
+    name: chosen.name || "Unknown",
+    level: chosen.level || 1,
+    hp: chosen.hp || 100,
+    exp: chosen.exp || 10,
+    gold: chosen.gold || 10,
+    attack: typeof chosen.attack === "number" ? chosen.attack : 10,
+    defense: typeof chosen.defense === "number" ? chosen.defense : 2,
+    drops: Array.isArray(chosen.drops) ? chosen.drops : []
+  };
+}
+
+function checkLevelUp(p){
+  let up = false;
+  while (p.exp >= p.level * 100) {
+    p.exp -= p.level * 100;
+    p.level++;
+    p.maxHp += 10;
+    p.hp = p.maxHp;
+    p.maxSkill = (p.maxSkill || 3) + 1;
+    p.skill = p.maxSkill;
+    up = true;
+  }
+  return up;
+}
+
+function createGuild(name, leaderId) {
+  const id = "g" + Date.now();
+  guilds[id] = {
+    id,
+    name,
+    leader: leaderId,
+    members: [leaderId],
+    invites: [],
+    bank: 0,
+    notice: "",
+    createdAt: Date.now()
+  };
+  dirty.guilds = true;
+  return id;
+}
+
+function getAttack(player) {
+  if (!player) return 0;
+  if (player.baseAttack !== undefined) {
+    let base = player.baseAttack;
+    let bonus = 0;
+    if (player.equipment && player.equipment.weapon && items[player.equipment.weapon])
+      bonus += items[player.equipment.weapon].attack || 0;
+
+    const petBonus = getPetBonus(player);
+    bonus += petBonus.atk;
+
+    return base + bonus;
+  }
+  if (typeof player.attack === "number") return player.attack;
+  return 0;
+}
+
+function getDefense(player) {
+  if (!player) return 0;
+  if (player.baseDefense !== undefined) {
+    let base = player.baseDefense;
+    let bonus = 0;
+    if (player.equipment && player.equipment.armor && items[player.equipment.armor])
+      bonus += items[player.equipment.armor].defense || 0;
+
+    const petBonus = getPetBonus(player);
+    bonus += petBonus.def;
+
+    return base + bonus;
+  }
+  if (typeof player.defense === "number") return player.defense;
+  return 0;
+}
+
+function calculatePlayerDamage(attacker, defender) {
+  let atk = getAttack(attacker);
+  let def = getDefense(defender);
+  let atkLvl = typeof attacker.level === "number" ? attacker.level : 1;
+  let defLvl = typeof defender.level === "number" ? defender.level : 1;
+  let base = atk + Math.floor(atkLvl * 2 + Math.random() * 8);
+  let reduction = def + Math.floor(defLvl * 1.5);
+  return Math.max(1, base - reduction);
+}
+
+// ================== WORLD BOSS HELPERS ==================
+function spawnWorldBoss() {
+  const allPlayers = Object.values(players);
+  const avgLevel = allPlayers.length
+    ? Math.max(5, Math.floor(allPlayers.reduce((s, p) => s + (p.level || 1), 0) / allPlayers.length))
+    : 5;
+
+  const templateIndex = Math.floor(Math.random() * worldBossTemplates.length);
+  const tpl = worldBossTemplates[templateIndex];
+
+  const level = avgLevel + 5;
+  const maxHp = tpl.baseHp + tpl.hpPerLevel * level;
+  const atk   = tpl.baseAtk + tpl.atkPerLevel * level;
+  const def   = tpl.baseDef + tpl.defPerLevel * level;
+
+  worldBoss.isActive = true;
+  worldBoss.name = tpl.name;
+  worldBoss.level = level;
+  worldBoss.maxHp = Math.floor(maxHp);
+  worldBoss.hp = Math.floor(maxHp);
+  worldBoss.attack = Math.floor(atk);
+  worldBoss.defense = Math.floor(def);
+  worldBoss.participants = {};
+  worldBoss.templateIndex = templateIndex;
+
+  console.log(`🐲 World Boss spawned: ${worldBoss.name} Lv.${worldBoss.level} HP ${worldBoss.hp}`);
+}
+
+function getWorldBossCountdown(now) {
+  const diff = worldBoss.nextSpawnAt - now;
+  if (!worldBoss.nextSpawnAt || diff <= 0) return "0m";
+  const minutes = Math.ceil(diff / (60 * 1000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
+// ================== WEEKLY RESET ==================
+function resetWorldBossWeeklyIfNeeded() {
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  if (now - worldBossWeekStart > weekMs) {
+    worldBossWeekStart = now;
+    for (const p of Object.values(players)) {
+      if (!p.stats) p.stats = {};
+      p.stats.worldBossWeeklyDamage = 0;
+    }
+    dirty.players = true;
+    console.log("🔄 Reset world boss weekly damage.");
+  }
+}
+
+// ================== SIMPLE SHUTDOWN ==================
+process.on("SIGINT", () => {
+  console.log("\n🛑 Menyimpan data & keluar...");
+  saveAll(true);
+  process.exit(0);
+});
+
+// ================== CLIENT SETUP ==================
+let client;
+
+async function broadcastBossSpawn() {
+  if (!client || !worldBoss.isActive) return;
+  const text =
+    `🐲 WORLD BOSS MUNCUL!\n` +
+    `${worldBoss.name} (Lv.${worldBoss.level})\n` +
+    `HP: ${worldBoss.hp}/${worldBoss.maxHp}\n\n` +
+    `Ketik *!worldboss* untuk ikut menyerang!`;
+
+  for (const chatId of knownChats) {
+    try {
+      await client.sendMessage(chatId, text);
+    } catch (e) {
+      console.error("❌ Gagal kirim notifikasi boss ke", chatId, e.message);
+    }
+  }
+}
+
+function initializeClient() {
+  console.log("🚀 Starting RPG Bot (world boss + pets)...");
+
+  client = new Client({
+    authStrategy: new LocalAuth({
+      clientId: "rpg-game"
+    }),
+    puppeteer: {
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process",
+        "--disable-gpu",
+        "--disable-extensions",
+      ]
+    }
+  });
+
+  client.on("qr", qr => {
+    console.clear();
+    console.log("📱 Scan QR code untuk RPG Bot:");
+    qrcode.generate(qr, { small: true });
+  });
+
+  client.on("authenticated", () => {
+    console.log("🔐 Authenticated (session tersimpan).");
+  });
+
+  client.on("ready", () => {
+    console.log("✅ RPG Bot siap digunakan!");
+    console.log('📱 Kirim "!help" dari WA lain ke nomor ini (boleh private atau grup).');
+
+    // Kalau boss belum punya jadwal spawn, spawn pertama kali
+    if (!worldBoss.isActive && !worldBoss.nextSpawnAt) {
+      worldBoss.nextSpawnAt = Date.now(); // langsung spawn di loop interval berikutnya
+    }
+  });
+
+  client.on("disconnected", (reason) => {
+    console.log("❌ Bot terputus:", reason);
+  });
+
+  client.on("auth_failure", (msg) => {
+    console.error("❌ Auth failure:", msg);
+  });
+
+  // ================== WORLD BOSS TIMER ==================
+  setInterval(async () => {
+    resetWorldBossWeeklyIfNeeded();
+    const now = Date.now();
+
+    if (!worldBoss.isActive && worldBoss.nextSpawnAt && now >= worldBoss.nextSpawnAt) {
+      spawnWorldBoss();
+      await broadcastBossSpawn();
+    }
+  }, BOSS_CHECK_INTERVAL_MS);
+
+  // ================== HANDLER COMMAND UTAMA ==================
+  async function handleCommandMessage(msg) {
+    const userId = msg.from.replace('@c.us', ''); // ID PLAYER dari nomor WA
+    let player = getPlayer(userId);
+    const message = (msg.body || "").trim();
+    const command = message.toLowerCase();
+
+    console.log(
+  "📩 msg from:", msg.from,
+  "| userId:", userId,
+  "| body:", msg.body
+);
+
+
+    if (!command.startsWith("!")) return;
+
+    try {
+      // === Help Command ===
+      if (command === "!help" || command === "!commands") {
+        const helpText = `🎮 RPG BOT COMMANDS
+
+👤 Profile & Setup
+!setname [nama]      - Ubah nama
+!profile [@player]   - Lihat profil
+!stats               - Statistik detail
+
+⚔ Battle & Hunt
+!hunt                - Berburu monster
+!skill [atk/def/hp]  - Upgrade skill
+!duel @player        - Tantang duel
+!duel_accept         - Terima tantangan duel
+!worldboss           - Serang World Boss
+!boss_top            - Top damage World Boss (mingguan)
+
+🎒 Inventory & Shop
+!inventory           - Lihat inventory
+!shop                - Toko item & telur pet
+!buy [item] [qty]    - Beli item
+!equip [item]        - Pakai equipment
+!unequip [slot]      - Lepas equipment (weapon/armor)
+!use [item] [qty/all]- Gunakan item / buka telur
+
+🐾 Pets
+!pets                - Lihat daftar pet
+!pet_set [nomor]     - Set pet aktif dari list
+
+💰 Money & Transfer
+!saldo               - Cek saldo
+!deposit [amount/all]- Simpan ke bank
+!withdraw [amount/all]- Ambil dari bank
+!give @player [amount]- Transfer gold
+!judi [amount/all]   - Judi coinflip
+
+🏛 Guild
+!create_guild [nama] - Buat guild
+!guild_info          - Info guild
+!guild_invite @plr   - Undang ke guild
+!guild_accept        - Terima undangan
+!guild_leave         - Keluar guild
+
+🎁 Daily & Extras
+!daily               - Hadiah harian
+!comment [text]      - Tulis komentar
+!comments            - Lihat komentar
+!leaderboard         - Papan peringkat level
+
+Selamat bermain!`;
+        await msg.reply(helpText);
+        return;
+      }
+
+      // === Set Nama ===
+      if (command.startsWith("!setname")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) return msg.reply("❌ Format: !setname [nama_baru]");
+        const newName = parts[1];
+        if (!isValidName(newName)) return msg.reply("❌ Nama tidak valid! 3-20 karakter (huruf/angka/underscore).");
+        if (isNameTaken(newName, userId)) return msg.reply("❌ Nama sudah digunakan pemain lain!");
+        const oldName = player.name;
+        player.name = newName;
+        savePlayer(player);
+        await msg.reply(`✅ Nama berhasil diubah: ${oldName} ➜ ${newName}`);
+        return;
+      }
+
+      // === Profile ===
+      if (command.startsWith("!profile") || command.startsWith("!player")) {
+        let target = player;
+        const mentions = await msg.getMentions();
+        if (mentions.length) {
+          const targetId = mentions[0].number;
+target = getPlayer(targetId);
+        }
+
+        const activePet = getActivePet(target);
+        const petLine = activePet
+          ? `${activePet.name} [Tier ${activePet.tier}]`
+          : "-";
+
+        await msg.reply(
+`👤 ${target.name}
+Level : ${target.level}
+ATK   : ${getAttack(target)}
+DEF   : ${getDefense(target)}
+EXP   : ${target.exp}/${target.level * 100}
+Gold  : ${target.gold}
+Bank  : ${target.bank}
+Guild : ${target.guild ? (getGuild(target.guild)?.name || "Unknown") : "-"}
+HP    : ${target.hp}/${target.maxHp}
+Weapon: ${target.equipment.weapon ? (items[target.equipment.weapon]?.name || "Unknown") : "-"}
+Armor : ${target.equipment.armor ? (items[target.equipment.armor]?.name || "Unknown") : "-"}
+Pet   : ${petLine}`
+        );
+        return;
+      }
+
+      // === Stats ===
+      if (command === "!stats") {
+        const s = player.stats;
+        await msg.reply(
+`📊 STATISTIK ${player.name}
+🎯 Total Hunts : ${s.totalHunts}
+🏆 Wins        : ${s.totalWins}
+💀 Losses      : ${s.totalLosses}
+🔥 Win Streak  : ${s.currentWinStreak}
+👹 Monsters    : ${s.monstersKilled}
+🛒 Items Bought: ${s.itemsBought}
+💬 Comments    : ${s.commentsWritten}
+🏛 Guild Hunts : ${s.guildHunts}
+🎁 Daily Streak: ${s.dailyStreak}
+🐲 WB Total Dmg: ${s.worldBossTotalDamage}
+🐲 WB Weekly   : ${s.worldBossWeeklyDamage}
+Win Rate       : ${s.totalHunts > 0 ? Math.round(s.totalWins / s.totalHunts * 100) : 0}%`
+        );
+        return;
+      }
+
+      // === Inventory ===
+      if (command === "!inventory") {
+        let out = "🎒 INVENTORY\n\n";
+
+        const invEntries = Object.entries(player.inventory)
+          .filter(([key, qty]) => qty > 0);
+
+        if (invEntries.length === 0) {
+          out += "Kosong";
+        } else {
+          invEntries.forEach(([key, qty]) => {
+            const item = items[key];
+            const name = item?.name || key;
+            out += `[${key}] ${name} x${qty}\n`;
+          });
+        }
+
+        out += "\nGunakan key dalam []:\n";
+        out += "!equip [key]  |  !use [key] [jumlah/all]\n";
+        out += "Contoh: !equip iron_sword, !use potion 2";
+
+        await msg.reply(out);
+        return;
+      }
+
+if (command === "!pets") {
+  const pets = player.pets || [];
+  if (!pets.length) {
+    await msg.reply("🐾 Kamu belum punya pet.\nDapatkan pet dari gacha telur di shop (!shop). Buka dengan !use egg_xxx");
+    return;
+  }
+
+  // Urutan tier: SSS -> SS -> S -> A -> B -> C -> D
+  const tierOrder = { SSS: 0, SS: 1, S: 2, A: 3, B: 4, C: 5, D: 6 };
+
+  const sortedPets = [...pets].sort((a, b) => {
+    const ta = tierOrder[a.tier] ?? 999;
+    const tb = tierOrder[b.tier] ?? 999;
+    if (ta !== tb) return ta - tb;
+    // kalau tier sama, urut berdasarkan (bonusAttack+bonusDefense) besar dulu
+    const sa = (b.bonusAttack || 0) + (b.bonusDefense || 0);
+    const sb = (a.bonusAttack || 0) + (a.bonusDefense || 0);
+    return sa - sb;
+  });
+
+  let out = "🐾 DAFTAR PET (SSS → D)\n\n";
+  sortedPets.forEach((p, i) => {
+    const isActive = player.activePetId === p.id ? " (AKTIF)" : "";
+    const petAtkInfo = p.canAttack ? `, DMG Pet: x${p.tier === "SSS" ? "1.5-2" : "0.5-1"} dari hit` : "";
+    out += `${i + 1}. ${p.name} [Tier ${p.tier}] +${p.bonusAttack} ATK, +${p.bonusDefense} DEF${petAtkInfo}${isActive}\n`;
+  });
+
+  out += "\nSet pet aktif: *!pet_set [nomor]*\nContoh: !pet_set 1";
+  await msg.reply(out);
+  return;
+}
+
+if (command.startsWith("!pet_set")) {
+  const parts = message.split(" ");
+  if (parts.length < 2) {
+    return msg.reply("❌ Format: !pet_set [nomor_pet]\nCek nomor dengan !pets");
+  }
+
+  const pets = player.pets || [];
+  if (!pets.length) {
+    return msg.reply("🐾 Kamu belum punya pet.");
+  }
+
+  const tierOrder = { SSS: 0, SS: 1, S: 2, A: 3, B: 4, C: 5, D: 6 };
+  const sortedPets = [...pets].sort((a, b) => {
+    const ta = tierOrder[a.tier] ?? 999;
+    const tb = tierOrder[b.tier] ?? 999;
+    if (ta !== tb) return ta - tb;
+    const sa = (b.bonusAttack || 0) + (b.bonusDefense || 0);
+    const sb = (a.bonusAttack || 0) + (a.bonusDefense || 0);
+    return sa - sb;
+  });
+
+  const idx = parseInt(parts[1]);
+  if (isNaN(idx) || idx < 1 || idx > sortedPets.length) {
+    return msg.reply("❌ Nomor pet tidak valid. Cek list dengan !pets.");
+  }
+
+  const pet = sortedPets[idx - 1];
+  player.activePetId = pet.id;
+  savePlayer(player);
+  await msg.reply(`🐾 Pet aktif sekarang: ${pet.name} [Tier ${pet.tier}]`);
+  return;
+}
+
+
+
+      // === Equip (1 weapon & 1 armor) ===
+      if (command.startsWith("!equip ")) {
+        const parts = message.split(" ");
+        const itemKey = parts[1]?.toLowerCase();
+        if (!itemKey) return msg.reply('❌ Format: !equip [key_item]. Contoh: !equip iron_sword');
+
+        const item = items[itemKey];
+        if (!item) return msg.reply(`❌ Item dengan key "${itemKey}" tidak ditemukan di shop.`);
+
+        if (!player.inventory[itemKey] || player.inventory[itemKey] < 1) {
+          return msg.reply(`❌ Kamu tidak punya "${item.name}" di inventory.`);
+        }
+
+        if (item.type !== "weapon" && item.type !== "armor") {
+          return msg.reply("❌ Item ini bukan equipment (weapon/armor).");
+        }
+
+        const slot = item.type; // 'weapon' atau 'armor'
+        const currentlyEquippedKey = player.equipment[slot];
+
+        if (currentlyEquippedKey === itemKey) {
+          return msg.reply(`ℹ Kamu sudah memakai ${item.name} di slot ${slot.toUpperCase()}.`);
+        }
+
+        if (currentlyEquippedKey) {
+          const currentItem = items[currentlyEquippedKey];
+          const currentName = currentItem?.name || currentlyEquippedKey;
+          return msg.reply(
+            `❌ Slot ${slot.toUpperCase()} sudah terisi ${currentName}.\n` +
+            `Gunakan *!unequip ${slot}* dulu kalau mau ganti.`
+          );
+        }
+
+        player.equipment[slot] = itemKey;
+        player.inventory[itemKey]--;
+
+        if (player.inventory[itemKey] <= 0) {
+          delete player.inventory[itemKey];
+        }
+
+        savePlayer(player);
+        await msg.reply(`✅ ${item.name} dipasang sebagai ${slot.toUpperCase()}!`);
+        return;
+      }
+
+      // === Unequip ===
+      if (command.startsWith("!unequip ")) {
+        const slot = message.split(" ")[1]?.toLowerCase();
+        if (!["weapon", "armor"].includes(slot)) {
+          return msg.reply('❌ Slot hanya "weapon" atau "armor". Contoh: !unequip weapon');
+        }
+
+        if (!player.equipment[slot]) {
+          return msg.reply(`❌ Tidak ada equipment aktif di slot ${slot}.`);
+        }
+
+        const unequippedKey = player.equipment[slot];
+        const unequippedItem = items[unequippedKey];
+        const unequippedName = unequippedItem?.name || unequippedKey;
+
+        player.inventory[unequippedKey] = (player.inventory[unequippedKey] || 0) + 1;
+        player.equipment[slot] = null;
+
+        savePlayer(player);
+        await msg.reply(`✅ ${unequippedName} dilepas dari slot ${slot.toUpperCase()}.`);
+        return;
+      }
+
+      // === Shop ===
+      if (command === "!shop") {
+        let out = "🏪 ITEM SHOP\n\n";
+
+        Object.entries(items).forEach(([key, item]) => {
+          let statinfo = "";
+
+          if (item.type === "weapon" && typeof item.attack === "number") {
+            statinfo = `(+${item.attack} ATK)`;
+          } else if (item.type === "armor" && typeof item.defense === "number") {
+            statinfo = `(+${item.defense} DEF)`;
+          } else if (item.type === "consumable" && typeof item.heal === "number") {
+            statinfo = `(+${item.heal} HP)`;
+          } else if (item.type === "pet_egg") {
+            statinfo = `(Pet Egg: ${item.rarity})`;
+          }
+
+          out += `[${key}] ${item.name} - ${item.price}💰 ${statinfo}\n`;
+        });
+
+        out += "\nGunakan key dalam [] untuk beli. Contoh: !buy potion 2, !buy egg_common 1";
+        await msg.reply(out);
+        return;
+      }
+
+      // === Buy ===
+      if (command.startsWith("!buy")) {
+        const parts = message.split(" ");
+        if (parts.length < 3) return msg.reply("❌ Format: !buy [item_key] [jumlah]");
+        const itemKey = parts[1].toLowerCase();
+        const qty = parseInt(parts[2]);
+        const item = items[itemKey];
+        if (!item) return msg.reply("❌ Item tidak ditemukan.");
+        if (isNaN(qty) || qty <= 0) return msg.reply("❌ Jumlah harus angka positif.");
+        const total = item.price * qty;
+        if (player.gold < total) return msg.reply(`❌ Gold tidak cukup. Butuh ${total}, punya ${player.gold}.`);
+        player.gold -= total;
+        player.inventory[itemKey] = (player.inventory[itemKey] || 0) + qty;
+        player.stats.itemsBought += qty;
+        savePlayer(player);
+        await msg.reply(`✅ Berhasil membeli ${qty}x ${item.name} (${total} gold)`);
+        return;
+      }
+
+      // === Hunt ===
+      if (command === "!hunt") {
+        if (Date.now() - player.cooldown < 10000) {
+          const timeLeft = Math.ceil((10000 - (Date.now() - player.cooldown)) / 1000);
+          return msg.reply(`⏰ Cooldown ${timeLeft} detik lagi!`);
+        }
+
+        player.cooldown = Date.now();
+        const monster = getRandomMonster(player.level);
+
+        let mHp = Math.max(1, monster.hp);
+        let pHp = Math.max(1, player.hp);
+        let log =
+          `⚔ *${player.name} vs ${monster.name}*\n` +
+          `Player ATK: ${getAttack(player)} | DEF: ${getDefense(player)}\n` +
+          `Monster ATK: ${monster.attack} | DEF: ${monster.defense}\n\n`;
+
+          while (mHp > 0 && pHp > 0) {
+            // damage murni player
+            let playerHit = calculatePlayerDamage(player, monster);
+
+            // damage pet berdasarkan damage player di hit ini
+            let petExtra = getPetAttackDamage(player, playerHit);
+            let totalHit = playerHit + petExtra;
+
+            mHp -= totalHit;
+
+            log += `🗡 Kamu serang: -${playerHit} HP\n`;
+            if (petExtra > 0) {
+              log += `🐾 Pet-mu ikut menyerang: -${petExtra} HP\n`;
+            }
+
+            if (mHp <= 0) break;
+
+            let mDmg = calculatePlayerDamage(monster, player);
+            pHp -= mDmg;
+            log += `👹 ${monster.name} serang: -${mDmg} HP\n`;
+          }
+
+
+        player.stats.totalHunts++;
+
+        if (pHp <= 0) {
+          player.hp = Math.floor(player.maxHp * 0.5);
+          player.stats.totalLosses++;
+          player.stats.currentWinStreak = 0;
+          log += "\n💀 Kamu kalah! HP menjadi 50%";
+        } else {
+          player.hp = Math.max(1, pHp);
+          player.gold += monster.gold;
+          player.exp  += monster.exp;
+          player.stats.monstersKilled++;
+          player.stats.totalWins++;
+          player.stats.currentWinStreak++;
+
+          if (monster.drops.length > 0 && Math.random() < 0.3) {
+            const drop = monster.drops[Math.floor(Math.random() * monster.drops.length)];
+            player.inventory[drop] = (player.inventory[drop] || 0) + 1;
+            log += `\n🎁 Dapat item: ${items[drop]?.name || drop}!`;
+          }
+
+          if (checkLevelUp(player)) log += "\n🎉 LEVEL UP!";
+          log += `\n🏆 Menang! +${monster.exp} EXP, +${monster.gold} gold`;
+        }
+
+        log += `\n❤ HP tersisa: ${player.hp}/${player.maxHp}`;
+
+        savePlayer(player);
+        await msg.reply(log);
+        return;
+      }
+
+      // === World Boss ===
+      if (command === "!worldboss" || command === "!bos" || command === "!boss") {
+        const now = Date.now();
+
+        // cooldown per player (dipengaruhi tier pet)
+        let cd = 10000; // 10 detik default
+        const activePet = getActivePet(player);
+        if (activePet) {
+          if (activePet.tier === "S") cd = 8000;
+          else if (activePet.tier === "SS") cd = 6000;
+          else if (activePet.tier === "SSS") cd = 5000;
+        }
+
+        if (now - player.bossCooldown < cd) {
+          const left = Math.ceil((cd - (now - player.bossCooldown)) / 1000);
+          return msg.reply(`⏳ Kamu masih lelah setelah menyerang Boss!\nTunggu ${left} detik lagi.`);
+        }
+        player.bossCooldown = now;
+
+        // spawn kalau waktunya
+        if (!worldBoss.isActive) {
+          if (!worldBoss.nextSpawnAt || now >= worldBoss.nextSpawnAt) {
+            spawnWorldBoss();
+          } else {
+            const cdText = getWorldBossCountdown(now);
+            await msg.reply(`🐲 World Boss belum muncul.\nSisa waktu: ${cdText}`);
+            return;
+          }
+        }
+
+        const boss = worldBoss;
+
+        let log =
+          `🐲 WORLD BOSS EVENT\n` +
+          `${boss.name} (Lv.${boss.level})\n` +
+          `HP Boss: ${boss.hp}/${boss.maxHp}\n\n`;
+
+                    // === Player menyerang boss ===
+            let pAtk = getAttack(player);
+            let base = pAtk + Math.floor((player.level || 1) * 2 + Math.random() * 8);
+            let reduction = boss.defense + Math.floor(boss.level * 1.5);
+
+            // damage murni player ke boss
+            let playerHit = Math.max(1, base - reduction);
+
+            // damage pet berdasarkan damage player di hit ini
+            let petExtra = getPetAttackDamage(player, playerHit);
+            let totalHit = playerHit + petExtra;
+
+            boss.hp -= totalHit;
+            if (boss.hp < 0) boss.hp = 0;
+
+            // catat kontribusi pakai totalHit (player + pet)
+            if (!boss.participants[userId]) {
+              boss.participants[userId] = { damage: 0 };
+            }
+            boss.participants[userId].damage += totalHit;
+
+            // stats juga pakai totalHit
+            player.stats.worldBossTotalDamage += totalHit;
+            player.stats.worldBossWeeklyDamage += totalHit;
+
+            log += `🗡 Seranganmu: -${playerHit} HP\n`;
+            if (petExtra > 0) {
+              log += `🐾 Pet-mu ikut menyerang: -${petExtra} HP\n`;
+            }
+            log += `HP Boss sekarang: ${boss.hp}/${boss.maxHp}\n`;
+
+
+        // === Boss mati ===
+        if (boss.hp <= 0) {
+          boss.isActive = false;
+          boss.lastKilledAt = now;
+          boss.nextSpawnAt = now + WORLD_BOSS_RESPAWN_MS;
+
+          const totalDamage = Object.values(boss.participants).reduce((s, d) => s + d.damage, 0) || 1;
+          const baseGold = 2000;
+          const baseExp = 1000;
+
+          log += `\n🏆 WORLD BOSS DIKALAHKAN!\n\n`;
+
+          const contributors = Object.entries(boss.participants)
+            .map(([uid, data]) => ({ uid, damage: data.damage }))
+            .sort((a, b) => b.damage - a.damage);
+
+          const top = contributors[0];
+          let yourEggText = "";
+
+          for (const c of contributors) {
+            const share = c.damage / totalDamage;
+            const goldGain = Math.max(50, Math.floor(baseGold * share));
+            const expGain = Math.max(50, Math.floor(baseExp * share));
+            const pl = getPlayer(c.uid);
+            pl.gold += goldGain;
+            pl.exp += expGain;
+            checkLevelUp(pl);
+
+            // drop telur: top dapat mythic, high contributors dapat legends
+            let eggDrop = null;
+            if (top && c.uid === top.uid) {
+              eggDrop = "egg_mythic";
+            } else if (share >= 0.2) {
+              eggDrop = "egg_legends";
+            } else if (share >= 0.1) {
+              eggDrop = "egg_rare";
+            }
+
+            if (eggDrop) {
+              pl.inventory[eggDrop] = (pl.inventory[eggDrop] || 0) + 1;
+            }
+
+            savePlayer(pl);
+
+            if (c.uid === userId) {
+              log += `Hadiahmu: +${goldGain} gold, +${expGain} EXP (Damage: ${c.damage})\n`;
+              if (eggDrop) {
+                const eggName = items[eggDrop]?.name || eggDrop;
+                yourEggText = `🎁 Kamu juga mendapat 1x ${eggName}!`;
+              }
+            }
+          }
+
+          if (top) {
+            const topPlayer = getPlayer(top.uid);
+            log += `\n👑 Kontributor tertinggi: ${topPlayer.name} (${top.damage} damage)`;
+          }
+
+          if (yourEggText) {
+            log += `\n${yourEggText}`;
+          }
+
+          log += `\n\nWorld Boss berikutnya muncul lagi dalam ~1 jam.`;
+
+        } else {
+          // === Boss masih hidup, boss balas ===
+          // bikin boss lebih sakit
+          const bBase = boss.attack + Math.floor(boss.level * 3 + Math.random() * 10);
+          // sedikit kurangi efek level player
+          const bReduction = getDefense(player) + Math.floor((player.level || 1) * 1.0);
+
+          // damage mentah
+          let rawBossDmg = bBase - bReduction;
+
+          // kalikan 1.5 biar lebih perih
+          const dmgToPlayer = Math.max(1, Math.floor(rawBossDmg * 1.5));
+
+          player.hp = Math.max(1, player.hp - dmgToPlayer);
+          savePlayer(player);
+
+          log += `\n👊 ${boss.name} membalas: -${dmgToPlayer} HP\n`;
+          log += `HP-mu sekarang: ${player.hp}/${player.maxHp}\n`;
+
+        }
+
+        savePlayer(player);
+        await msg.reply(log);
+        return;
+      }
+
+      // === World Boss Leaderboard Weekly ===
+      if (command === "!boss_top") {
+        const allPlayers = Object.values(players);
+        const sorted = allPlayers
+          .filter(p => p.stats && p.stats.worldBossWeeklyDamage > 0)
+          .sort((a, b) => (b.stats.worldBossWeeklyDamage || 0) - (a.stats.worldBossWeeklyDamage || 0));
+        if (!sorted.length) {
+          await msg.reply("🐲 Belum ada damage ke World Boss minggu ini.");
+          return;
+        }
+        const top10 = sorted.slice(0, 10);
+        let out = "🏆 WORLD BOSS TOP DAMAGE (Mingguan)\n\n";
+        top10.forEach((p, i) => {
+          const dmg = p.stats.worldBossWeeklyDamage || 0;
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+          out += `${medal} ${p.name} - ${dmg} damage\n`;
+        });
+        out += "\nReset otomatis tiap 7 hari.";
+        await msg.reply(out);
+        return;
+      }
+
+      // === Duel Accept ===
+      if (command === "!duel_accept") {
+        const duel = pendingDuels[userId];
+        if (!duel) {
+          return msg.reply("❌ Tidak ada tantangan duel untukmu.");
+        }
+
+        const challengerId = duel.challengerId;
+        delete pendingDuels[userId];
+
+        const challenger = getPlayer(challengerId);
+        const defender = player;
+
+        let hp1 = Math.max(1, challenger.hp);
+        let hp2 = Math.max(1, defender.hp);
+
+        let log =
+          `⚔ *DUEL: ${challenger.name} vs ${defender.name}*\n` +
+          `${challenger.name}: ATK ${getAttack(challenger)} | DEF ${getDefense(challenger)}\n` +
+          `${defender.name}: ATK ${getAttack(defender)} | DEF ${getDefense(defender)}\n\n`;
+
+        let turn = 1; // 1 = challenger, 2 = defender
+
+        while (hp1 > 0 && hp2 > 0) {
+          if (turn === 1) {
+            const dmg = calculatePlayerDamage(challenger, defender);
+            hp2 -= dmg;
+            log += `🗡 ${challenger.name} serang: -${dmg} HP\n`;
+            turn = 2;
+          } else {
+            const dmg = calculatePlayerDamage(defender, challenger);
+            hp1 -= dmg;
+            log += `🗡 ${defender.name} serang: -${dmg} HP\n`;
+            turn = 1;
+          }
+        }
+
+        let winner = null;
+        let loser = null;
+        let winnerHp = 1;
+
+        if (hp1 <= 0 && hp2 <= 0) {
+          challenger.hp = Math.max(1, Math.floor(challenger.maxHp * 0.5));
+          defender.hp   = Math.max(1, Math.floor(defender.maxHp * 0.5));
+          log += "\n🤝 Duel berakhir SERI! Kedua pemain kelelahan.";
+        } else if (hp1 > 0) {
+          winner = challenger;
+          loser  = defender;
+          winnerHp = hp1;
+        } else {
+          winner = defender;
+          loser  = challenger;
+          winnerHp = hp2;
+        }
+
+        if (winner && loser) {
+          winner.hp = Math.max(1, winnerHp);
+          loser.hp  = Math.max(1, Math.floor(loser.maxHp * 0.5));
+
+          const baseBet = 50 + Math.floor((winner.level + loser.level) * 10);
+          const goldTransfer = Math.min(baseBet, loser.gold);
+
+          if (goldTransfer > 0) {
+            loser.gold  -= goldTransfer;
+            winner.gold += goldTransfer;
+            log += `\n🏆 *${winner.name} MENANG duel!*`;
+            log += `\n💰 Hadiah: +${goldTransfer} gold dari ${loser.name}`;
+          } else {
+            log += `\n🏆 *${winner.name} MENANG duel!* (tidak ada gold yang dipertaruhkan)`;
+          }
+
+          const expGain = 30 + loser.level * 10;
+          winner.exp += expGain;
+          log += `\n✨ ${winner.name} mendapatkan +${expGain} EXP`;
+
+          if (checkLevelUp(winner)) {
+            log += `\n🎉 ${winner.name} LEVEL UP!`;
+          }
+        }
+
+        savePlayer(challenger);
+        savePlayer(defender);
+
+        log += `\n\n❤ HP ${challenger.name}: ${challenger.hp}/${challenger.maxHp}`;
+        log += `\n❤ HP ${defender.name}: ${defender.hp}/${defender.maxHp}`;
+
+        await msg.reply(log);
+        return;
+      }
+
+      // === Duel (tantang) ===
+      if (command.startsWith("!duel ")) {
+        const mentions = await msg.getMentions();
+        if (!mentions.length) {
+          return msg.reply("❌ Format: !duel @player");
+        }
+        const targetId = mentions[0].number;
+        if (targetId === userId) {
+          return msg.reply("❌ Tidak bisa duel dengan diri sendiri.");
+        }
+
+        const targetPlayer = getPlayer(targetId);
+
+        pendingDuels[targetId] = {
+          challengerId: userId,
+          createdAt: Date.now()
+        };
+
+        await msg.reply(
+          `⚔ *TANTANGAN DUEL!*\n` +
+          `${player.name} menantang ${targetPlayer.name} untuk duel!\n\n` +
+          `${targetPlayer.name}, ketik *!duel_accept* untuk menerima.`
+        );
+        return;
+      }
+
+      // === Skill upgrade ===
+      if (command.startsWith("!skill")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) {
+          return msg.reply(
+`🔮 Gunakan skill untuk tambah stat:
+!skill atk (+2 ATK)
+!skill def (+2 DEF)
+!skill hp  (+10 HP)
+Skill Point: ${player.skill}`
+          );
+        }
+        if (player.skill < 1) return msg.reply("❌ Tidak cukup skill point!");
+
+        let upmsg = "";
+        if (parts[1] === "atk") { player.baseAttack += 2; upmsg = "ATK +2!"; }
+        else if (parts[1] === "def") { player.baseDefense += 2; upmsg = "DEF +2!"; }
+        else if (parts[1] === "hp")  { player.maxHp += 10; player.hp = player.maxHp; upmsg = "Max HP +10 & Full Heal!"; }
+        else return msg.reply("❌ Gunakan: !skill atk | !skill def | !skill hp");
+
+        player.skill--;
+        savePlayer(player);
+        await msg.reply(`✨ ${upmsg}\nSisa Skill Point: ${player.skill}`);
+        return;
+      }
+
+      // === Use item (potion, exp, telur pet, dll) ===
+      if (command.startsWith("!use")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) return msg.reply("❌ Format: !use [item_key] [jumlah/all]");
+        const itemKey = parts[1].toLowerCase();
+        const jumlahInput = parts[2] || "1";
+        const jumlah = jumlahInput === "all" ? (player.inventory[itemKey] || 0) : (parseInt(jumlahInput) || 1);
+
+        if (!items[itemKey]) return msg.reply("❌ Item tidak ditemukan.");
+        if (!player.inventory[itemKey] || player.inventory[itemKey] < jumlah) return msg.reply("❌ Tidak punya item cukup.");
+
+        let result = "";
+        const item = items[itemKey];
+
+        if (item.type === "consumable") {
+          if (itemKey === "potion" || itemKey === "super_potion") {
+            if (player.hp >= player.maxHp) {
+              return msg.reply("❌ HP sudah penuh!");
+            }
+            let totalHeal = 0;
+            let actualUsed = 0;
+            for (let i = 0; i < jumlah; i++) {
+              if (player.hp >= player.maxHp) break;
+              const healAmount = Math.min(item.heal, player.maxHp - player.hp);
+              player.hp += healAmount;
+              totalHeal += healAmount;
+              actualUsed++;
+            }
+            player.inventory[itemKey] -= actualUsed;
+            if (player.inventory[itemKey] <= 0) delete player.inventory[itemKey];
+            result = `✅ Menggunakan ${actualUsed}x ${item.name}. HP +${totalHeal} (${player.hp}/${player.maxHp})`;
+          } else if (itemKey === "phoenix_feather") {
+            player.hp = player.maxHp;
+            player.inventory[itemKey] -= jumlah;
+            if (player.inventory[itemKey] <= 0) delete player.inventory[itemKey];
+            result = `✅ Menggunakan ${jumlah}x Phoenix Feather. HP penuh dipulihkan!`;
+          } else if (itemKey === "exp_boost") {
+            const expGain = jumlah * 100;
+            player.exp += expGain;
+            player.inventory[itemKey] -= jumlah;
+            if (player.inventory[itemKey] <= 0) delete player.inventory[itemKey];
+            const leveledUp = checkLevelUp(player);
+            result = `✅ Menggunakan ${jumlah}x EXP Boost. +${expGain} EXP!`;
+            if (leveledUp) result += "\n🎉 LEVEL UP!";
+          } else {
+            return msg.reply("❌ Item ini tidak bisa digunakan.");
+          }
+
+        }  else if (item.type === "pet_egg") {
+  let opened = 0;
+  let petsText = "";
+  let soldText = "";
+  let totalSellGold = 0;
+
+  const rarity = item.rarity || "common";
+
+  for (let i = 0; i < jumlah; i++) {
+    if (!player.inventory[itemKey] || player.inventory[itemKey] <= 0) break;
+
+    const tier = rollTierFromPool(rarity);
+    const pet = createPetFromTier(tier);
+
+    // CEK DUPLIKAT: species + tier sama
+    const alreadyHave = (player.pets || []).find(
+      p => p.species === pet.species && p.tier === pet.tier
+    );
+
+    player.inventory[itemKey]--;
+    opened++;
+
+    if (alreadyHave) {
+      // AUTO SELL
+      const sellGold = getPetAutoSellValue(pet);
+      totalSellGold += sellGold;
+      const canAtkText = pet.canAttack ? ", (bisa menyerang)" : "";
+      soldText += `• ${pet.name} [Tier ${pet.tier}] (duplikat) → otomatis dijual +${sellGold} gold${canAtkText}\n`;
+    } else {
+      // PET BARU → SIMPAN
+      player.pets.push(pet);
+      if (!player.activePetId) player.activePetId = pet.id;
+
+      const canAtkText = pet.canAttack ? ", bisa ikut menyerang monster/boss" : "";
+      petsText += `• ${pet.name} [Tier ${pet.tier}] (+${pet.bonusAttack} ATK, +${pet.bonusDefense} DEF${canAtkText})\n`;
+    }
+  }
+
+  if (player.inventory[itemKey] <= 0) delete player.inventory[itemKey];
+  if (!opened) return msg.reply("❌ Telur sudah habis.");
+
+  if (totalSellGold > 0) {
+    player.gold += totalSellGold;
+  }
+
+  result = `🐣 GACHA PET\nMembuka ${opened}x ${item.name}:\n`;
+
+  if (petsText) {
+    result += `\n⭐ PET BARU:\n${petsText}`;
+  }
+  if (soldText) {
+    result += `\n♻ PET DUPLIKAT (auto-sell):\n${soldText}\nTotal gold dari duplikat: +${totalSellGold} gold`;
+  }
+
+  result += `\n\nCek pet-mu dengan *!pets*`;
+
+
+
+        } else if (item.type === "weapon" || item.type === "armor") {
+          return msg.reply("❌ Gunakan !equip untuk memakai equipment.");
+        } else {
+          return msg.reply("❌ Item ini tidak bisa digunakan.");
+        }
+
+        savePlayer(player);
+        await msg.reply(result);
+        return;
+      }
+
+      // === Saldo ===
+      if (command === "!saldo" || command === "!balance") {
+        await msg.reply(
+`💰 SALDO ${player.name}
+Gold : ${player.gold}
+Bank : ${player.bank}
+Total: ${player.gold + player.bank}`
+        );
+        return;
+      }
+
+      // === Deposit ===
+      if (command.startsWith("!deposit")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) return msg.reply("❌ Format: !deposit [jumlah/all]");
+        const input = parts[1];
+        const amount = input === "all" ? player.gold : parseInt(input);
+        if (isNaN(amount) || amount <= 0) return msg.reply("❌ Jumlah tidak valid.");
+        if (amount > player.gold) return msg.reply("❌ Gold tidak cukup.");
+        player.gold -= amount;
+        player.bank += amount;
+        savePlayer(player);
+        await msg.reply(`✅ Berhasil deposit ${amount} gold ke bank.`);
+        return;
+      }
+
+      // === Withdraw ===
+      if (command.startsWith("!withdraw")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) return msg.reply("❌ Format: !withdraw [jumlah/all]");
+        const input = parts[1];
+        const amount = input === "all" ? player.bank : parseInt(input);
+        if (isNaN(amount) || amount <= 0) return msg.reply("❌ Jumlah tidak valid.");
+        if (amount > player.bank) return msg.reply("❌ Saldo bank tidak cukup.");
+        player.bank -= amount;
+        player.gold += amount;
+        savePlayer(player);
+        await msg.reply(`✅ Berhasil withdraw ${amount} gold dari bank.`);
+        return;
+      }
+
+      // === Give Gold ===
+      if (command.startsWith("!give")) {
+        const mentions = await msg.getMentions();
+        const parts = message.split(" ");
+        if (mentions.length === 0 || parts.length < 3) {
+          return msg.reply("❌ Format: !give @player [jumlah]");
+        }
+        const targetId = mentions[0].number;
+        const amount = parseInt(parts[2]);
+        if (isNaN(amount) || amount <= 0) return msg.reply("❌ Jumlah tidak valid.");
+        if (amount > player.gold) return msg.reply("❌ Gold tidak cukup.");
+        if (targetId === userId) return msg.reply("❌ Tidak bisa transfer ke diri sendiri.");
+
+        const target = getPlayer(targetId);
+        player.gold -= amount;
+        target.gold += amount;
+        savePlayer(player);
+        savePlayer(target);
+        await msg.reply(`✅ Berhasil transfer ${amount} gold ke ${target.name}.`);
+        return;
+      }
+
+      // === Judi (coinflip) ===
+      if (command.startsWith("!judi")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) {
+          return msg.reply("❌ Format: !judi [jumlah/all]\nContoh: !judi 100 atau !judi all");
+        }
+
+        const input = parts[1].toLowerCase();
+        let amount = input === "all" ? player.gold : parseInt(input);
+
+        if (isNaN(amount) || amount <= 0) {
+          return msg.reply("❌ Jumlah tidak valid.");
+        }
+
+        if (amount > player.gold) {
+          return msg.reply("❌ Gold tidak cukup buat judi segitu.");
+        }
+
+        if (amount < 10) {
+          return msg.reply("❌ Minimal judi 10 gold.");
+        }
+
+        const roll = Math.random();
+        let resultText = "🎰 JUDI COINFLIP\n";
+        if (roll < 0.5) {
+          player.gold -= amount;
+          resultText += `Kamu *KALAH* 😢\n-${amount} gold`;
+        } else {
+          player.gold += amount;
+          resultText += `Kamu *MENANG* 🥳\n+${amount} gold`;
+        }
+
+        resultText += `\n\nSaldo sekarang: ${player.gold} gold`;
+
+        savePlayer(player);
+        await msg.reply(resultText);
+        return;
+      }
+
+      // === Create Guild ===
+      if (command.startsWith("!create_guild")) {
+        const parts = message.split(" ");
+        if (parts.length < 2) return msg.reply("❌ Format: !create_guild [nama_guild]");
+        const guildName = parts.slice(1).join(" ");
+        if (player.guild) return msg.reply("❌ Kamu sudah bergabung dengan guild.");
+        if (guildName.length < 3 || guildName.length > 30) return msg.reply("❌ Nama guild harus 3-30 karakter.");
+
+        const existingGuild = Object.values(guilds).find(g => g.name.toLowerCase() === guildName.toLowerCase());
+        if (existingGuild) return msg.reply("❌ Nama guild sudah digunakan.");
+
+        const guildId = createGuild(guildName, userId);
+        player.guild = guildId;
+        savePlayer(player);
+        await msg.reply(`✅ Guild "${guildName}" berhasil dibuat! Kamu adalah leader.`);
+        return;
+      }
+
+      // === Guild Info ===
+      if (command === "!guild_info" || command === "!guild") {
+        if (!player.guild) return msg.reply("❌ Kamu belum bergabung dengan guild.");
+        const guild = getGuild(player.guild);
+        if (!guild) return msg.reply("❌ Guild tidak ditemukan.");
+
+        const leader = getPlayer(guild.leader);
+        const memberList = guild.members.map(id => getPlayer(id).name).join(", ");
+        const inviteList = guild.invites.map(id => getPlayer(id).name).join(", ");
+
+        await msg.reply(
+`🏛 GUILD INFO
+Nama    : ${guild.name}
+Leader  : ${leader.name}
+Members (${guild.members.length}): ${memberList}
+Bank    : ${guild.bank} gold
+Notice  : ${guild.notice || "Tidak ada"}
+Invites : ${inviteList || "Tidak ada"}`
+        );
+        return;
+      }
+
+      // === Guild Invite ===
+if (command.startsWith("!guild_invite")) {
+    if (!player.guild) return msg.reply("❌ Kamu belum bergabung dengan guild.");
+    const guild = getGuild(player.guild);
+    if (!guild) return msg.reply("❌ Guild tidak ditemukan.");
+    if (guild.leader !== userId) return msg.reply("❌ Hanya leader yang bisa mengundang member.");
+
+    const mentions = await msg.getMentions();
+    if (mentions.length === 0) return msg.reply("❌ Format: !guild_invite @player");
+
+    // FIX FINAL → tidak ada getContactById lagi
+    const targetId = mentions[0].id.replace('@c.us', '');
+
+    const target = getPlayer(targetId);
+    if (target.guild) return msg.reply("❌ Player sudah bergabung dengan guild lain.");
+    if (guild.members.includes(targetId)) return msg.reply("❌ Player sudah menjadi member guild.");
+    if (guild.invites.includes(targetId)) return msg.reply("❌ Player sudah diundang.");
+
+        addGuildInvite(guild, targetId);
+        await msg.reply(`✅ ${target.name} berhasil diundang ke guild "${guild.name}".`);
+        return;
+      }
+
+      // === Guild Accept ===
+      if (command === "!guild_accept" || command === "!join_guild") {
+        if (player.guild) return msg.reply("❌ Kamu sudah bergabung dengan guild.");
+
+        const invitingGuild = Object.values(guilds).find(g => g.invites.includes(userId));
+        if (!invitingGuild) return msg.reply("❌ Tidak ada undangan guild.");
+
+        if (acceptGuildInvite(player, invitingGuild)) {
+          await msg.reply(`✅ Berhasil bergabung dengan guild "${invitingGuild.name}"!`);
+        } else {
+          await msg.reply("❌ Gagal bergabung dengan guild.");
+        }
+        return;
+      }
+
+      // === Guild Leave ===
+      if (command === "!guild_leave") {
+        if (!player.guild) return msg.reply("❌ Kamu belum bergabung dengan guild.");
+        const guild = getGuild(player.guild);
+        if (!guild) return msg.reply("❌ Guild tidak ditemukan.");
+
+        if (guild.leader === userId) {
+          if (guild.members.length > 1) {
+            const newLeader = guild.members.find(id => id !== userId);
+            guild.leader = newLeader;
+            await msg.reply(`✅ Kamu keluar dari guild. Leadership dipindah ke ${getPlayer(newLeader).name}.`);
+          } else {
+            delete guilds[guild.id];
+            await msg.reply(`✅ Kamu keluar dari guild. Guild "${guild.name}" dibubarkan.`);
+          }
+        } else {
+          await msg.reply(`✅ Kamu keluar dari guild "${guild.name}".`);
+        }
+
+        removeGuildMember(guild, userId);
+        player.guild = null;
+        savePlayer(player);
+        return;
+      }
+
+      // === Daily ===
+      if (command === "!daily") {
+        const now = Date.now();
+        const lastDaily = player.lastDaily || 0;
+        const dayMs = 24 * 60 * 60 * 1000;
+
+        if (now - lastDaily < dayMs) {
+          const timeLeft = dayMs - (now - lastDaily);
+          const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+          const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+          return msg.reply(`⏰ Daily reward tersedia dalam ${hours}h ${minutes}m lagi.`);
+        }
+
+        const isConsecutive = (now - lastDaily) < (dayMs * 2);
+        if (isConsecutive) {
+          player.stats.dailyStreak++;
+        } else {
+          player.stats.dailyStreak = 1;
+        }
+
+        const baseReward = 100;
+        const streakBonus = Math.min(player.stats.dailyStreak * 10, 200);
+        const totalGold = baseReward + streakBonus;
+
+        player.gold += totalGold;
+        player.lastDaily = now;
+
+        const randomItems = ["potion", "super_potion"];
+        const randomItem = randomItems[Math.floor(Math.random() * randomItems.length)];
+        player.inventory[randomItem] = (player.inventory[randomItem] || 0) + 1;
+
+        savePlayer(player);
+        await msg.reply(
+`🎁 DAILY REWARD
+Gold : +${totalGold}
+Item : ${items[randomItem].name}
+Streak: ${player.stats.dailyStreak} hari
+Bonus : +${streakBonus} gold`
+        );
+        return;
+      }
+
+      // === Comments (lihat) ===
+      if (command === "!comments") {
+        if (comments.length === 0) return msg.reply("📝 Belum ada komentar.");
+
+        const recent = comments.slice(-5).reverse();
+        let out = "📝 KOMENTAR TERBARU\n\n";
+        recent.forEach(c => {
+          const date = new Date(c.timestamp).toLocaleDateString();
+          out += `${c.playerName}: "${c.text}"\n${date}\n\n`;
+        });
+
+        await msg.reply(out);
+        return;
+      }
+
+      // === Comment (tulis) ===
+      if (command.startsWith("!comment")) {
+        const commentText = message.slice("!comment".length).trim();
+        if (!commentText) return msg.reply("❌ Format: !comment [teks]");
+        if (commentText.length > 200) return msg.reply("❌ Komentar maksimal 200 karakter.");
+
+        const comment = {
+          id: Date.now(),
+          userId,
+          playerName: player.name,
+          text: commentText,
+          timestamp: Date.now(),
+          likes: 0,
+          replies: []
+        };
+
+        comments.push(comment);
+        player.stats.commentsWritten++;
+        savePlayer(player);
+        dirty.comments = true;
+
+        await msg.reply("✅ Komentar berhasil ditulis!");
+        return;
+      }
+
+      // === Leaderboard level ===
+      if (command === "!leaderboard" || command === "!top") {
+        const allPlayers = Object.values(players);
+        const sorted = allPlayers.sort((a, b) => b.level - a.level || b.exp - a.exp);
+        const top10 = sorted.slice(0, 10);
+
+        let out = "🏆 LEADERBOARD LEVEL\n\n";
+        top10.forEach((p, i) => {
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+          out += `${medal} ${p.name} - Lv.${p.level}\n`;
+        });
+
+        await msg.reply(out);
+        return;
+      }
+
+      // === Default response ===
+      if (command.startsWith("!")) {
+        await msg.reply("❌ Command tidak dikenali. Ketik !help untuk melihat daftar command.");
+        return;
+      }
+s
+    } catch (err) {
+      console.error("❌ Error handleCommandMessage:", err);
+      try { await msg.reply("❌ Terjadi error internal."); } catch (_) {}
+    }
+  }
+
+  // Listener pesan
+  client.on("message", async (msg) => {
+    knownChats.add(msg.from); // simpan chat utk broadcast world boss
+    await handleCommandMessage(msg);
+  });
+
+  client.initialize().catch(err => {
+    console.error("❌ Error initializing client:", err);
+  });
+}
+
+initializeClient();
