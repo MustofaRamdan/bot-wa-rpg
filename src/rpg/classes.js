@@ -481,8 +481,10 @@ function getAccuracyRate(dex) {
   return Math.min(98, Math.floor(80 + (dex * 0.2)));
 }
 
-// Menghitung EXP yang dibutuhkan untuk naik ke level berikutnya
 function getExpNeeded(level) {
+  if (level >= 10) {
+    return Math.floor(100 * Math.pow(level, 2.2));
+  }
   return Math.floor(100 * Math.pow(level, 1.5));
 }
 

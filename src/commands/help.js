@@ -165,7 +165,7 @@ Ketik perintah di bawah untuk memulai petualanganmu!
 • \`!boss_top\` - Top damage World Boss saat ini.
 
 🎣 *GATHERING, CRAFT & BREW*
-• \`!mancing\` / \`!tebang\` / \`!tambang\` - Cari material (CD: 10 menit).
+• \`!mancing\` / \`!tebang\` / \`!tambang\` - Cari material (CD: 2 menit).
 • \`!jual [key] [qty/all]\` - Jual ikan ke pasar.
 • \`!craft\` / \`!craft [key]\` - Craft senjata, zirah, & kitab pasif.
 • \`!brew\` / \`!brew [key]\` - Meramu potion penyembuh.

@@ -4,7 +4,7 @@ const db = require('../database/db');
 const helpers = require('../utils/helpers');
 const items = require('../config/items');
 
-const GATHER_CD = 10 * 60 * 1000; // 10 menit
+const GATHER_CD = 2 * 60 * 1000; // 2 menit
 
 async function reply(sock, msg, text) {
   const remoteJid = msg.key.remoteJid;
@@ -254,7 +254,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         `   *1x ${item.name}*\n` +
         `   Harga jual: *${item.sellPrice.toLocaleString()} Gold*\n\n` +
         `💡 Jual dengan: *!jual ${drop} [jumlah/all]*\n` +
-        `⏳ Cooldown: 10 menit`
+        `⏳ Cooldown: 2 menit`
       );
     }
 
@@ -300,7 +300,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         `${WOOD_EMOJI[drop] || '🪵'} Kamu mendapatkan:\n` +
         `   *1x ${item.name}*\n\n` +
         `💡 Gunakan kayu untuk craft: *!craft*\n` +
-        `⏳ Cooldown: 10 menit`
+        `⏳ Cooldown: 2 menit`
       );
     }
 
@@ -346,7 +346,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         `${ORE_EMOJI[drop] || '🪨'} Kamu mendapatkan:\n` +
         `   *1x ${item.name}*\n\n` +
         `💡 Gunakan ore untuk craft: *!craft*\n` +
-        `⏳ Cooldown: 10 menit`
+        `⏳ Cooldown: 2 menit`
       );
     }
 

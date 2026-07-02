@@ -101,7 +101,7 @@ async function handleUserCommands(sock, msg, cmd, args, userId, pushName) {
 🏛 *Guild:* ${guildInfo}
 ❤️ *HP:* ${targetPlayer.hp}/${pStats.maxHp}
 💙 *MP:* ${targetPlayer.mp}/${pStats.maxMp}
-✨ *EXP:* ${targetPlayer.exp}/${expNeeded}
+✨ *EXP:* ${targetPlayer.exp.toLocaleString()} / ${expNeeded.toLocaleString()} (${Math.round((targetPlayer.exp / expNeeded) * 100)}%)
 💰 *Gold:* ${targetPlayer.gold} 🪙 | *Bank:* ${targetPlayer.bank} 🪙
 🎒 *Equip:* 🗡️ ${weaponName} | 🛡️ ${armorName}
 🐾 *Pet Aktif:* ${petName}
