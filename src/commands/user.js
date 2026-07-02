@@ -23,11 +23,15 @@ async function handleUserCommands(sock, msg, cmd, args, userId, pushName) {
         return reply(sock, msg, `❌ Kamu sudah terdaftar sebagai *${classes.jobs[player.job].name}*!`);
       }
 
+      const basicJobs = ['warrior', 'paladin', 'mage', 'cleric', 'rogue', 'archer', 'berserker', 'monk'];
       const jobKey = args[0]?.toLowerCase();
-      if (!jobKey || !classes.jobs[jobKey]) {
+      if (!jobKey || !basicJobs.includes(jobKey)) {
         let listJobs = "📝 *PILIHAN JOB RPG (Ketik !register [nama_job])*:\n\n";
-        for (const [key, job] of Object.entries(classes.jobs)) {
-          listJobs += `• *${job.name}* (Key: \`${key}\`)\n  _${job.description}_\n`;
+        for (const key of basicJobs) {
+          const job = classes.jobs[key];
+          if (job) {
+            listJobs += `• *${job.name}* (Key: \`${key}\`)\n  _${job.description}_\n`;
+          }
         }
         return reply(sock, msg, listJobs);
       }
