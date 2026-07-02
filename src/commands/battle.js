@@ -141,9 +141,9 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
           penaltyText = " *(Penalti Level: -50% EXP)*";
         }
 
-        // Gold drop nerf seiring bertambahnya level player untuk mencegah inflasi
+        // Gold drop nerf seiring bertambahnya level player untuk mencegah inflasi (nerf 70%)
         const rawGold = monster.gold * (1 + (Math.random() * 0.2));
-        const goldGain = Math.max(1, Math.floor((rawGold / (1 + player.level * 0.03)) * goldMultiplier));
+        const goldGain = Math.max(1, Math.floor(((rawGold / 3.3) / (1 + player.level * 0.03)) * goldMultiplier));
         
         player.exp += expGain;
         player.gold += goldGain;

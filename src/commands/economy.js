@@ -121,7 +121,7 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
     case 'judi':
     case 'gamble': {
       const input = args[0];
-      if (!input) return reply(sock, msg, `🎰 *JUDI COINFLIP (Peluang 50%)* 🎰\nFormat: *!judi [jumlah/all]*\nContoh: *!judi 100*`);
+      if (!input) return reply(sock, msg, `🎰 *JUDI COINFLIP (Peluang 45% & Pajak Admin 20%)* 🎰\nFormat: *!judi [jumlah/all]*\nContoh: *!judi 100*`);
 
       let amount = 0;
       if (input.toLowerCase() === 'all') {
@@ -142,19 +142,49 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
         return reply(sock, msg, `❌ Gold-mu tidak cukup! Sisa Gold di tas: *${player.gold} Gold*.`);
       }
 
-      const win = Math.random() < 0.48; // 48% Win chance (casino house edge)
-      let log = `🎰 *JUDI COINFLIP: ${player.name}* 🎰\n────────────────────────\n`;
-      log += `Mempertaruhkan: *${amount} Gold* 🪙\n`;
-      
-      if (win) {
-        player.gold += amount;
-        log += `🥳 *MENANG!* Koin mendarat di sisi pilihanmu!\n💰 Mendapatkan *+${amount} Gold*!\n`;
-      } else {
-        player.gold -= amount;
-        log += `😢 *KALAH!* Bandot memenangkan koin tersebut.\n📉 Kehilangan *-${amount} Gold*!\n`;
+      // Inisialisasi stat judi
+      player.battleStats = player.battleStats || {};
+      player.battleStats.judiCount = player.battleStats.judiCount || 0;
+      player.battleStats.lastJudiTime = player.battleStats.lastJudiTime || 0;
+
+      const now = Date.now();
+      // Reset judiCount jika taruhan terakhir lebih dari 5 menit lalu
+      if (now - player.battleStats.lastJudiTime > 5 * 60 * 1000) {
+        player.battleStats.judiCount = 0;
       }
 
-      log += `────────────────────────\n🪙 Sisa Gold di tas: *${player.gold} Gold*`;
+      player.battleStats.judiCount += 1;
+      player.battleStats.lastJudiTime = now;
+
+      // Peluang ketangkap polisi (semakin sering judi berturut-turut, semakin besar peluangnya)
+      let policeChance = 0;
+      if (player.battleStats.judiCount === 2) policeChance = 0.08;
+      else if (player.battleStats.judiCount === 3) policeChance = 0.20;
+      else if (player.battleStats.judiCount >= 4) policeChance = 0.45;
+
+      if (Math.random() < policeChance) {
+        const lostGold = Math.floor(player.gold * 0.5);
+        player.gold -= lostGold;
+        player.battleStats.judiCount = 0; // Reset counter
+        db.savePlayer(player);
+        return reply(sock, msg, `🚨 *POLISI DATANG! OOPS!* 🚨\n────────────────────────\nKamu keseringan judi berturut-turut (*${player.battleStats.judiCount}x*) dan terendus aparat keamanan!\n💸 Seluruh kekayaanmu disita polisi sebesar *50% dari Gold di tas* (-${lostGold.toLocaleString()} Gold).\n🪙 Sisa Gold di tas: *${player.gold.toLocaleString()} Gold*\n\n💡 _Tips: Kurangi frekuensi judi beruntun agar tidak dicurigai polisi!_`);
+      }
+
+      const win = Math.random() < 0.45; // Peluang menang diturunkan menjadi 45%
+      let log = `🎰 *JUDI COINFLIP: ${player.name}* 🎰\n────────────────────────\n`;
+      log += `Mempertaruhkan: *${amount.toLocaleString()} Gold* 🪙\n`;
+      
+      if (win) {
+        const adminTax = Math.floor(amount * 0.20);
+        const netProfit = amount - adminTax;
+        player.gold += netProfit;
+        log += `🥳 *MENANG!* Koin mendarat di sisi pilihanmu!\n💰 Mendapatkan *+${netProfit.toLocaleString()} Gold* (setelah dipotong Pajak Admin 20%: -${adminTax.toLocaleString()} Gold)!\n`;
+      } else {
+        player.gold -= amount;
+        log += `😢 *KALAH!* Bandot memenangkan koin tersebut.\n📉 Kehilangan *-${amount.toLocaleString()} Gold*!\n`;
+      }
+
+      log += `────────────────────────\n🪙 Sisa Gold di tas: *${player.gold.toLocaleString()} Gold*`;
       db.savePlayer(player);
 
       return reply(sock, msg, log);
