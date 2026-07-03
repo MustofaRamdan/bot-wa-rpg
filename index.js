@@ -5,7 +5,8 @@ const {
   default: makeWASocket, 
   useMultiFileAuthState, 
   DisconnectReason,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
@@ -62,7 +63,7 @@ async function startBot() {
     auth: state,
     logger: pino({ level: 'silent' }), // Log sunyi agar tidak spam terminal
     printQRInTerminal: false,           // Selalu gunakan pairing code, jangan print QR
-    browser: ["Ubuntu", "Chrome", "20.0.04"] // Browser Linux agar support pairing code
+    browser: Browsers.ubuntu('Chrome')  // Browser resmi yang dikelola library Baileys agar aman & lolos pairing code
   });
 
   // Request pairing code jika belum login
