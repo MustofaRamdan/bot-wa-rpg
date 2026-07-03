@@ -7,7 +7,6 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
@@ -51,19 +50,23 @@ async function startBot() {
   console.log(`📱 Menggunakan Baileys v${version.join('.')}, Terbaru: ${isLatest}`);
 
   const pairingNumber = process.env.PAIRING_NUMBER?.replace(/[^0-9]/g, '');
-  const usePairingCode = !!pairingNumber;
+  if (!pairingNumber) {
+    console.error("\n❌ ERROR: PAIRING_NUMBER wajib diisi di file .env untuk menghubungkan bot!");
+    console.error("💡 Masukkan nomor telepon bot Anda pada variabel PAIRING_NUMBER di file .env (contoh: PAIRING_NUMBER=628123456789).\n");
+    process.exit(1);
+  }
 
   // Inisialisasi WASocket
   const sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: 'silent' }), // Log sunyi agar tidak spam terminal
-    printQRInTerminal: !usePairingCode, // Jangan print QR jika menggunakan pairing code
+    printQRInTerminal: false,           // Selalu gunakan pairing code, jangan print QR
     browser: ["Ubuntu", "Chrome", "20.0.04"] // Browser Linux agar support pairing code
   });
 
-  // Request pairing code jika diaktifkan dan belum login
-  if (usePairingCode && !sock.authState.creds.registered) {
+  // Request pairing code jika belum login
+  if (!sock.authState.creds.registered) {
     setTimeout(async () => {
       try {
         const code = await sock.requestPairingCode(pairingNumber);
@@ -82,13 +85,7 @@ async function startBot() {
 
   // Listener event perubahan status koneksi
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr && !usePairingCode) {
-      console.clear();
-      console.log("📱 SCAN QR CODE DENGAN WHATSAPP HP ANDA:");
-      qrcode.generate(qr, { small: true });
-    }
+    const { connection, lastDisconnect } = update;
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
