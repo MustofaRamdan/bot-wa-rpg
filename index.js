@@ -50,14 +50,32 @@ async function startBot() {
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`📱 Menggunakan Baileys v${version.join('.')}, Terbaru: ${isLatest}`);
 
+  const pairingNumber = process.env.PAIRING_NUMBER?.replace(/[^0-9]/g, '');
+  const usePairingCode = !!pairingNumber;
+
   // Inisialisasi WASocket
   const sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: 'silent' }), // Log sunyi agar tidak spam terminal
-    printQRInTerminal: true,            // Print QR otomatis di terminal
-    browser: ["Antigravity RPG Bot", "Chrome", "1.0.0"]
+    printQRInTerminal: !usePairingCode, // Jangan print QR jika menggunakan pairing code
+    browser: ["Ubuntu", "Chrome", "20.0.04"] // Browser Linux agar support pairing code
   });
+
+  // Request pairing code jika diaktifkan dan belum login
+  if (usePairingCode && !sock.authState.creds.registered) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(pairingNumber);
+        console.log(`\n🔑 ==========================================`);
+        console.log(`🔑 [PAIRING CODE ANDA]: ${code}`);
+        console.log(`🔑 Masukkan kode ini di WhatsApp Perangkat Tertaut Anda!`);
+        console.log(`🔑 ==========================================\n`);
+      } catch (err) {
+        console.error("❌ Gagal meminta Pairing Code:", err.message);
+      }
+    }, 4000);
+  }
 
   // Listener event perubahan kredensial
   sock.ev.on('creds.update', saveCreds);
@@ -66,7 +84,7 @@ async function startBot() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
+    if (qr && !usePairingCode) {
       console.clear();
       console.log("📱 SCAN QR CODE DENGAN WHATSAPP HP ANDA:");
       qrcode.generate(qr, { small: true });
