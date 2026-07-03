@@ -166,8 +166,6 @@ async function startBot() {
         
         const pushName = msg.pushName || `Player_${userId.slice(-4)}`;
 
-        console.log(`📩 Command dari JID: ${senderJid} (${pushName}) | Isi: "${body}"`);
-
         // Load player dan data terkait (mentions, guild members) ke cache secara async sebelum command diproses (Lazy Loading)
         const idsToLoad = [userId];
         const mentions = msgContent?.extendedTextMessage?.contextInfo?.mentionedJid || [];
@@ -190,7 +188,6 @@ async function startBot() {
         // Jalankan lock keamanan untuk menghindari spam race condition
         const lock = require('./src/utils/lock');
         if (!lock.acquireLock(userId)) {
-          console.warn(`⚠️ [CONCURRENCY SHIELD] Mengabaikan command paralel dari ${userId}.`);
           continue;
         }
 
@@ -225,8 +222,6 @@ async function startBot() {
 
       // Spawn World Boss menggunakan fungsi terpusat
       spawnWorldBoss(boss, avgLevel);
-
-      console.log(`🐲 World Boss ${boss.name} spawned in schedule tick!`);
 
       // Kirim Notifikasi ke semua chat yang dikenal
       const text = 

@@ -55,7 +55,6 @@ function spawnWorldBoss(boss, avgLevel) {
   boss.templateIndex = tplIndex;
   
   db.saveWorldBoss(boss);
-  console.log(`🐲 World Boss Spawned: ${boss.name} (Lv. ${boss.level}) HP: ${boss.hp}`);
 }
 
 async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
