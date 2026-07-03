@@ -13,7 +13,6 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
   if (!player.job) return reply(sock, msg, `❌ Kamu belum mendaftar. Ketik *!register* terlebih dahulu!`);
 
   switch (cmd) {
-    case 'saldo':
     case 'balance': {
       const saldomsg = 
 `💰 *SALDO KEUANGAN: ${player.name}*
@@ -25,8 +24,7 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, saldomsg);
     }
 
-    case 'deposit':
-    case 'depo': {
+    case 'deposit': {
       const input = args[0];
       if (!input) return reply(sock, msg, `❌ Format: *!deposit [jumlah/all]*\nContoh: *!deposit 500*`);
 
@@ -52,8 +50,7 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, `✅ Berhasil menyimpan *${amount} Gold* ke dalam Bank!\nTas: *${player.gold} Gold* | Bank: *${player.bank} Gold*`);
     }
 
-    case 'withdraw':
-    case 'wd': {
+    case 'withdraw': {
       const input = args[0];
       if (!input) return reply(sock, msg, `❌ Format: *!withdraw [jumlah/all]*\nContoh: *!withdraw 500*`);
 
@@ -118,10 +115,9 @@ async function handleEconomyCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, `✅ Berhasil mentransfer *${amount} Gold* 🪙 ke *${targetPlayer.name}*!`);
     }
 
-    case 'judi':
     case 'gamble': {
       const input = args[0];
-      if (!input) return reply(sock, msg, `🎰 *JUDI COINFLIP (Peluang 45% & Pajak Admin 20%)* 🎰\nFormat: *!judi [jumlah/all]*\nContoh: *!judi 100*`);
+      if (!input) return reply(sock, msg, `🎰 *GAMBLE COINFLIP (Peluang 45% & Pajak Admin 20%)* 🎰\nFormat: *!gamble [jumlah/all]*\nContoh: *!gamble 100*`);
 
       let amount = 0;
       if (input.toLowerCase() === 'all') {

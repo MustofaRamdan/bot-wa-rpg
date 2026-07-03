@@ -3,6 +3,7 @@
 const db = require('../database/db');
 const helpers = require('../utils/helpers');
 const items = require('../config/items');
+const { trackQuestProgress } = require('./quest');
 
 const GATHER_CD = 2 * 60 * 1000; // 2 menit
 
@@ -203,8 +204,9 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
 
   switch (cmd) {
 
-    // ─────────────────────── MANCING ───────────────────────
-    case 'mancing': {
+    // ─────────────────────── FISHING ───────────────────────
+    case 'fish':
+    case 'fishing': {
       const now = Date.now();
       const last = player.mancingCooldown || 0;
       if (now - last < GATHER_CD) {
@@ -234,14 +236,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       player.gatherStats.totalMancing = (player.gatherStats.totalMancing || 0) + 1;
 
       // Daily Quest fish progress
-      const todayStr = new Date().toISOString().slice(0, 10);
-      player.dailyQuest = player.dailyQuest || { date: "", huntProgress: 0, fishProgress: 0, claimed: false };
-      if (player.dailyQuest.date !== todayStr) {
-        player.dailyQuest = { date: todayStr, huntProgress: 0, fishProgress: 0, claimed: false };
-      }
-      if (!player.dailyQuest.claimed) {
-        player.dailyQuest.fishProgress = (player.dailyQuest.fishProgress || 0) + 1;
-      }
+      trackQuestProgress(player, 'fishProgress', 1);
 
       db.savePlayer(player);
 
@@ -253,13 +248,14 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         `${FISH_EMOJI[drop] || '🐟'} Kamu mendapatkan:\n` +
         `   *1x ${item.name}*\n` +
         `   Harga jual: *${item.sellPrice.toLocaleString()} Gold*\n\n` +
-        `💡 Jual dengan: *!jual ${drop} [jumlah/all]*\n` +
+        `💡 Jual dengan: *!sell ${drop} [jumlah/all]*\n` +
         `⏳ Cooldown: 2 menit`
       );
     }
 
-    // ─────────────────────── TEBANG ───────────────────────
-    case 'tebang': {
+    // ─────────────────────── CHOPPING ───────────────────────
+    case 'chop':
+    case 'woodcut': {
       const now = Date.now();
       const last = player.tebangCooldown || 0;
       if (now - last < GATHER_CD) {
@@ -289,7 +285,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       // Update stats
       player.gatherStats = player.gatherStats || { totalMancing: 0, totalTebang: 0, totalTambang: 0, totalCraft: 0 };
       player.gatherStats.totalTebang = (player.gatherStats.totalTebang || 0) + 1;
-
+      trackQuestProgress(player, 'chopProgress', 1);
       db.savePlayer(player);
 
       return reply(sock, msg,
@@ -304,8 +300,9 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       );
     }
 
-    // ─────────────────────── TAMBANG ───────────────────────
-    case 'tambang': {
+    // ─────────────────────── MINING ───────────────────────
+    case 'mine':
+    case 'mining': {
       const now = Date.now();
       const last = player.tambangCooldown || 0;
       if (now - last < GATHER_CD) {
@@ -335,7 +332,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       // Update stats
       player.gatherStats = player.gatherStats || { totalMancing: 0, totalTebang: 0, totalTambang: 0, totalCraft: 0 };
       player.gatherStats.totalTambang = (player.gatherStats.totalTambang || 0) + 1;
-
+      trackQuestProgress(player, 'mineProgress', 1);
       db.savePlayer(player);
 
       return reply(sock, msg,
@@ -350,8 +347,8 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       );
     }
 
-    // ─────────────────────── JUAL ───────────────────────
-    case 'jual': {
+    // ─────────────────────── SELL ───────────────────────
+    case 'sell': {
       const itemKey = args[0]?.toLowerCase();
       const amountInput = args[1] || '1';
 
@@ -359,7 +356,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         return reply(sock, msg,
           `🐟 *PASAR IKAN* 🐟\n` +
           `────────────────────────\n` +
-          `Format: *!jual [key_ikan] [jumlah/all]*\n\n` +
+          `Format: *!sell [key_ikan] [jumlah/all]*\n\n` +
           `📋 Daftar harga ikan:\n` +
           `• \`fish_common\` ⚪ → *30 Gold*\n` +
           `• \`fish_uncommon\` 🟢 → *120 Gold*\n` +
@@ -372,7 +369,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
 
       const item = items[itemKey];
       if (!item || item.type !== 'fish') {
-        return reply(sock, msg, `❌ *${itemKey}* bukan ikan! Hanya ikan yang bisa dijual di pasar.\nKetik *!jual* untuk melihat daftar ikan.`);
+        return reply(sock, msg, `❌ *${itemKey}* bukan ikan! Hanya ikan yang bisa dijual di pasar.\nKetik *!sell* untuk melihat daftar ikan.`);
       }
 
       const qty = player.inventory[itemKey] || 0;
@@ -421,7 +418,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
           out += `• *!craft ${key}*\n  📦 ${mats} + ${r.gold.toLocaleString()}💰\n`;
         }
 
-        out += `\n💡 Dapatkan material dari *!mancing*, *!tebang*, *!tambang*`;
+        out += `\n💡 Dapatkan material dari *!fish*, *!chop*, *!mine*`;
         return reply(sock, msg, out);
       }
 
@@ -450,7 +447,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
         return reply(sock, msg,
           `❌ *Bahan kurang untuk craft ${recipe.name}!*\n\n` +
           `📦 Kekurangan:\n• ${missing.join('\n• ')}\n\n` +
-          `💡 Kumpulkan bahan dari *!mancing*, *!tebang*, *!tambang*`
+          `💡 Kumpulkan bahan dari *!fish*, *!chop*, *!mine*`
         );
       }
 
@@ -483,8 +480,7 @@ async function handleGatherCommands(sock, msg, cmd, args, userId) {
       );
     }
     // ─────────────────────── BREW (RAMU POTION) ───────────────────────
-    case 'brew':
-    case 'ramu': {
+    case 'brew': {
       const BREW_RECIPES = {
         potion: { name: "Health Potion 🧪", mats: { wood_pine: 3, stone_basic: 1 }, gold: 20 },
         super_potion: { name: "Super Potion 💊", mats: { wood_oak: 3, ore_copper: 1, potion: 1 }, gold: 60 },

@@ -165,8 +165,8 @@ Ketik perintah di bawah untuk memulai petualanganmu!
 • \`!boss_top\` - Top damage World Boss saat ini.
 
 🎣 *GATHERING, CRAFT & BREW*
-• \`!mancing\` / \`!tebang\` / \`!tambang\` - Cari material (CD: 2 menit).
-• \`!jual [key] [qty/all]\` - Jual ikan ke pasar.
+• \`!fish\` / \`!chop\` / \`!mine\` - Cari material (CD: 2 menit).
+• \`!sell [key] [qty/all]\` - Jual ikan ke pasar.
 • \`!craft\` / \`!craft [key]\` - Craft senjata, zirah, & kitab pasif.
 • \`!brew\` / \`!brew [key]\` - Meramu potion penyembuh.
 
@@ -181,7 +181,7 @@ Ketik perintah di bawah untuk memulai petualanganmu!
 
 🎒 *INVENTORY & FORGE*
 • \`!inventory\` / \`!inv\` - Cek tas barang & equipment.
-• \`!shop\` / \`!toko\` - Beli potion, alat kerja, & pet egg.
+• \`!shop\` - Beli potion, alat kerja, & pet egg.
 • \`!buy [key] [qty]\` - Beli barang di toko.
 • \`!equip [key]\` - Gunakan senjata/zirah hasil craft.
 • \`!unequip [slot]\` - Lepas equipment (weapon/armor).
@@ -193,9 +193,14 @@ Ketik perintah di bawah untuk memulai petualanganmu!
 • \`!pet_set [nomor]\` - Pasang pet aktif.
 
 🪙 *EKONOMI & TRANSFER*
-• \`!saldo\` / \`!deposit\` / \`!withdraw\` - Keuangan bank.
+• \`!balance\` / \`!deposit\` / \`!withdraw\` - Keuangan bank.
 • \`!give @player [jumlah]\` - Kirim gold ke teman.
-• \`!judi [jumlah/all]\` - Coinflip (ganda/zonk).
+• \`!giveitem @player [item_key] [jumlah/all]\` - Kirim barang ke teman.
+• \`!gamble [jumlah/all]\` - Coinflip (ganda/zonk).
+
+👥 *SOSIAL & GUESTBOOK*
+• \`!comment [pesan]\` - Kirim pesan ke papan tulis global (+50 Gold & +100 EXP harian).
+• \`!guestbook\` / \`!comments\` - Lihat 10 pesan terbaru dari pemain lain.
 
 ⚔️ *PVP DUEL SYSTEM*
 • \`!duel @player [taruhan]\` - Duel taruhan (20% pajak pembakaran gold).

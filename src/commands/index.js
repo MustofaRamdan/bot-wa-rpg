@@ -38,7 +38,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
       return await handleHelpCommand(sock, msg, args);
     }
 
-    if (['register', 'daftar', 'profile', 'me', 'stats', 'stat_add', 'upstat', 'daily', 'leaderboard', 'top', 'promote', 'promosi', 'changejob', 'reclass', 'gantijob'].includes(command)) {
+    if (['register', 'profile', 'me', 'stats', 'stat_add', 'upstat', 'daily', 'leaderboard', 'top', 'promote', 'changejob', 'reclass'].includes(command)) {
       return await handleUserCommands(sock, msg, command, args, userId, pushName);
     }
 
@@ -48,7 +48,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
     }
 
     // 4. Inventory, Shop & Forge Commands
-    if (['inventory', 'inv', 'shop', 'toko', 'buy', 'beli', 'equip', 'pakai', 'unequip', 'lepas', 'use', 'gunakan', 'forge', 'upgrade'].includes(command)) {
+    if (['inventory', 'inv', 'shop', 'buy', 'equip', 'unequip', 'use', 'forge', 'upgrade', 'giveitem', 'give_item', 'transferitem'].includes(command)) {
       return await handleInventoryCommands(sock, msg, command, args, userId);
     }
 
@@ -58,7 +58,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
     }
 
     // 6. Economy Commands
-    if (['saldo', 'balance', 'deposit', 'depo', 'withdraw', 'wd', 'give', 'pay', 'judi', 'gamble'].includes(command)) {
+    if (['balance', 'deposit', 'withdraw', 'give', 'pay', 'gamble'].includes(command)) {
       return await handleEconomyCommands(sock, msg, command, args, userId);
     }
 
@@ -73,7 +73,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
     }
 
     // 9. Gathering, Crafting & Brewing Commands
-    if (['mancing', 'tebang', 'tambang', 'jual', 'craft', 'brew', 'ramu'].includes(command)) {
+    if (['fish', 'fishing', 'chop', 'woodcut', 'mine', 'mining', 'sell', 'craft', 'brew'].includes(command)) {
       return await handleGatherCommands(sock, msg, command, args, userId);
     }
 
@@ -88,7 +88,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
     }
 
     // 12. Quests & Achievements Commands
-    if (['quest', 'misi', 'achievement', 'pencapaian'].includes(command)) {
+    if (['quest', 'achievement'].includes(command)) {
       return await handleQuestCommands(sock, msg, command, args, userId);
     }
 

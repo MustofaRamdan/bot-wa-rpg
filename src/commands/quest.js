@@ -16,6 +16,32 @@ const DAILY_QUEST = {
   }
 };
 
+const QUEST_TEMPLATES = [
+  {
+    type: "hunter",
+    name: "Monster Slayer ⚔️",
+    desc: "Buru monster liar untuk mengamankan wilayah sekitar.",
+    targetKey: "huntProgress",
+    targetQty: 10,
+    rewards: { exp: 400, gold: 200, items: { leather_scrap: 2 } }
+  },
+  {
+    type: "angler",
+    name: "Master Angler 🎣",
+    desc: "Mancing ikan di danau terdekat untuk persediaan ransum.",
+    targetKey: "fishProgress",
+    targetQty: 6,
+    rewards: { exp: 200, gold: 450, items: { potion: 2 } }
+  },
+  {
+    type: "gatherer",
+    name: "Resource Gatherer ⛏️🪵",
+    desc: "Kumpulkan kayu & bijih besi untuk keperluan Blacksmith.",
+    targetKeys: { chopProgress: 4, mineProgress: 4 },
+    rewards: { exp: 300, gold: 300, items: { iron_ore: 2, magic_shard: 1 } }
+  }
+];
+
 const ACHIEVEMENTS = [
   {
     id: "hunter_1",
@@ -103,6 +129,38 @@ const ACHIEVEMENTS = [
   }
 ];
 
+function initDailyQuest(player, todayStr) {
+  const template = QUEST_TEMPLATES[Math.floor(Math.random() * QUEST_TEMPLATES.length)];
+  player.dailyQuest = {
+    date: todayStr,
+    type: template.type,
+    name: template.name,
+    desc: template.desc,
+    claimed: false,
+    huntProgress: 0,
+    fishProgress: 0,
+    chopProgress: 0,
+    mineProgress: 0,
+    targetKey: template.targetKey || null,
+    targetQty: template.targetQty || null,
+    targetKeys: template.targetKeys || null,
+    rewards: template.rewards
+  };
+}
+
+function trackQuestProgress(player, progressKey, amount = 1) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  if (!player.dailyQuest || player.dailyQuest.date !== todayStr) {
+    initDailyQuest(player, todayStr);
+  }
+  
+  const q = player.dailyQuest;
+  if (!q.claimed) {
+    q[progressKey] = (q[progressKey] || 0) + amount;
+  }
+}
+
 async function reply(sock, msg, text) {
   const remoteJid = msg.key.remoteJid;
   await sock.sendMessage(remoteJid, { text }, { quoted: msg });
@@ -113,41 +171,52 @@ async function handleQuestCommands(sock, msg, cmd, args, userId) {
   if (!player.job) return reply(sock, msg, `❌ Kamu belum mendaftar. Ketik *!register* terlebih dahulu!`);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  player.dailyQuest = player.dailyQuest || { date: "", huntProgress: 0, fishProgress: 0, claimed: false };
+  player.dailyQuest = player.dailyQuest || { date: "", claimed: false };
   
-  if (player.dailyQuest.date !== todayStr) {
-    player.dailyQuest = { date: todayStr, huntProgress: 0, fishProgress: 0, claimed: false };
+  if (player.dailyQuest.date !== todayStr || !player.dailyQuest.type) {
+    initDailyQuest(player, todayStr);
     db.savePlayer(player);
   }
 
-  if (cmd === 'quest' || cmd === 'misi') {
-    const sub = args[0]?.toLowerCase();
+  const items = require('../config/items');
 
-    if (sub === 'claim' || sub === 'ambil') {
-      if (player.dailyQuest.claimed) {
+  if (cmd === 'quest') {
+    const sub = args[0]?.toLowerCase();
+    const q = player.dailyQuest;
+
+    let isCompleted = false;
+    if (q.type === 'hunter' || q.type === 'angler') {
+      const prog = q[q.targetKey] || 0;
+      isCompleted = prog >= q.targetQty;
+    } else if (q.type === 'gatherer') {
+      const chopProg = q.chopProgress || 0;
+      const mineProg = q.mineProgress || 0;
+      const chopTarget = q.targetKeys.chopProgress;
+      const mineTarget = q.targetKeys.mineProgress;
+      isCompleted = chopProg >= chopTarget && mineProg >= mineTarget;
+    }
+
+    if (sub === 'claim') {
+      if (q.claimed) {
         return reply(sock, msg, `❌ Kamu sudah mengklaim hadiah misi harian hari ini! Silakan tunggu besok.`);
       }
-
-      const isCompleted = 
-        player.dailyQuest.huntProgress >= DAILY_QUEST.huntsNeeded &&
-        player.dailyQuest.fishProgress >= DAILY_QUEST.fishNeeded;
 
       if (!isCompleted) {
         return reply(sock, msg, `❌ Misi harianmu belum selesai! Selesaikan target sebelum mengklaim.`);
       }
 
       // Berikan rewards
-      player.dailyQuest.claimed = true;
-      player.exp += DAILY_QUEST.rewards.exp;
-      player.gold += DAILY_QUEST.rewards.gold;
+      q.claimed = true;
+      player.exp += q.rewards.exp;
+      player.gold += q.rewards.gold;
       
-      let rewardText = `🎁 *HADIAH MISI HARIAN KLAIMED!* 🎉\n────────────────────────\n`;
-      rewardText += `• EXP: *+${DAILY_QUEST.rewards.exp} EXP*\n`;
-      rewardText += `• Gold: *+${DAILY_QUEST.rewards.gold} Gold*\n`;
+      let rewardText = `🎁 *HADIAH DAILY QUEST DIKLAIM!* 🎉\n────────────────────────\n`;
+      rewardText += `• EXP: *+${q.rewards.exp} EXP*\n`;
+      rewardText += `• Gold: *+${q.rewards.gold} Gold*\n`;
       
-      for (const [itemKey, qty] of Object.entries(DAILY_QUEST.rewards.items)) {
+      for (const [itemKey, qty] of Object.entries(q.rewards.items)) {
         player.inventory[itemKey] = (player.inventory[itemKey] || 0) + qty;
-        rewardText += `• Item: *+${qty}x ${itemKey.replace('_', ' ')}*\n`;
+        rewardText += `• Item: *+${qty}x ${items[itemKey]?.name || itemKey}*\n`;
       }
 
       // Check level up
@@ -162,36 +231,55 @@ async function handleQuestCommands(sock, msg, cmd, args, userId) {
     }
 
     // Tampilkan detail Misi Harian
-    const hProg = Math.min(DAILY_QUEST.huntsNeeded, player.dailyQuest.huntProgress || 0);
-    const fProg = Math.min(DAILY_QUEST.fishNeeded, player.dailyQuest.fishProgress || 0);
-    
-    const hStatus = hProg >= DAILY_QUEST.huntsNeeded ? "✅" : "⏳";
-    const fStatus = fProg >= DAILY_QUEST.fishNeeded ? "✅" : "⏳";
+    let text = `🎯 *DAILY QUEST: ${q.name}* 🎯\nTanggal: *${q.date}*\n`;
+    text += `Deskripsi: _${q.desc}_\n`;
+    text += `────────────────────────\n`;
 
-    let text = `🎯 *MISI HARIAN RPG* 🎯\nTanggal: *${todayStr}*\n────────────────────────\n`;
-    text += `${hStatus} Hunt Monster: *(${hProg}/${DAILY_QUEST.huntsNeeded})*\n`;
-    text += `${fStatus} Memancing Ikan: *(${fProg}/${DAILY_QUEST.fishNeeded})*\n\n`;
+    if (q.type === 'hunter' || q.type === 'angler') {
+      const prog = q[q.targetKey] || 0;
+      const target = q.targetQty;
+      const status = prog >= target ? "✅" : "⏳";
+      text += `${status} Progres: *(${Math.min(prog, target)}/${target})*\n\n`;
+    } else if (q.type === 'gatherer') {
+      const chopProg = q.chopProgress || 0;
+      const mineProg = q.mineProgress || 0;
+      const chopTarget = q.targetKeys.chopProgress;
+      const mineTarget = q.targetKeys.mineProgress;
+      const chopStatus = chopProg >= chopTarget ? "✅" : "⏳";
+      const mineStatus = mineProg >= mineTarget ? "✅" : "⏳";
+      
+      text += `${chopStatus} Chop Wood: *(${Math.min(chopProg, chopTarget)}/${chopTarget})*\n`;
+      text += `${mineStatus} Mine Ore: *(${Math.min(mineProg, mineTarget)}/${mineTarget})*\n\n`;
+    }
     
     text += `🎁 *Hadiah:* \n`;
-    text += `• *${DAILY_QUEST.rewards.exp} EXP*\n`;
-    text += `• *${DAILY_QUEST.rewards.gold} Gold*\n`;
-    text += `• *3x Bijih Besi (Iron Ore)*\n`;
-    text += `• *1x Kristal Sihir (Magic Shard)*\n\n`;
+    text += `• *${q.rewards.exp} EXP*\n`;
+    text += `• *${q.rewards.gold} Gold*\n`;
+    for (const [itemKey, qty] of Object.entries(q.rewards.items)) {
+      text += `• *${qty}x ${items[itemKey]?.name || itemKey}*\n`;
+    }
+    text += `\n`;
 
-    if (hProg >= DAILY_QUEST.huntsNeeded && fProg >= DAILY_QUEST.fishNeeded) {
-      if (player.dailyQuest.claimed) {
+    if (isCompleted) {
+      if (q.claimed) {
         text += `🎉 Misi hari ini selesai dan hadiah sudah diambil!`;
       } else {
         text += `✨ *Misi selesai!* Ketik *!quest claim* untuk mengambil hadiah.`;
       }
     } else {
-      text += `💡 Lakukan *!hunt* dan *!mancing* untuk menyelesaikan target misi harian!`;
+      if (q.type === 'hunter') {
+        text += `💡 Lakukan *!hunt* untuk menyelesaikan target misi harian!`;
+      } else if (q.type === 'angler') {
+        text += `💡 Lakukan *!fish* untuk menyelesaikan target misi harian!`;
+      } else {
+        text += `💡 Lakukan *!chop* dan *!mine* untuk menyelesaikan target misi harian!`;
+      }
     }
     
     return reply(sock, msg, text);
   }
 
-  if (cmd === 'achievement' || cmd === 'pencapaian') {
+  if (cmd === 'achievement') {
     player.achievementsClaimed = player.achievementsClaimed || [];
     player.achievementStats = player.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
     player.gatherStats = player.gatherStats || { totalMancing: 0, totalTebang: 0, totalTambang: 0, totalCraft: 0 };
@@ -240,4 +328,4 @@ async function handleQuestCommands(sock, msg, cmd, args, userId) {
   }
 }
 
-module.exports = { handleQuestCommands, DAILY_QUEST, ACHIEVEMENTS };
+module.exports = { handleQuestCommands, DAILY_QUEST, ACHIEVEMENTS, trackQuestProgress };

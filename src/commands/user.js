@@ -17,8 +17,7 @@ async function handleUserCommands(sock, msg, cmd, args, userId, pushName) {
   let player = db.getPlayer(userId);
 
   switch (cmd) {
-    case 'register':
-    case 'daftar': {
+    case 'register': {
       if (player.job) {
         return reply(sock, msg, `❌ Kamu sudah terdaftar sebagai *${classes.jobs[player.job].name}*!`);
       }
@@ -248,8 +247,7 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
       return reply(sock, msg, dailyMsg);
     }
 
-    case 'promote':
-    case 'promosi': {
+    case 'promote': {
       if (!player.job) return reply(sock, msg, `❌ Kamu belum mendaftar. Ketik *!register*!`);
       
       const mKilled = player.battleStats?.monstersKilled || 0;
@@ -290,8 +288,7 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
     }
 
     case 'changejob':
-    case 'reclass':
-    case 'gantijob': {
+    case 'reclass': {
       if (!player.job) return reply(sock, msg, `❌ Kamu belum mendaftar. Ketik *!register*!`);
       
       const newJobKey = args[0]?.toLowerCase();

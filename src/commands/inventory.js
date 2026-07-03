@@ -63,8 +63,7 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, out);
     }
 
-    case 'shop':
-    case 'toko': {
+    case 'shop': {
       let out = `🏪 *RPG ITEM SHOP* 🏪\n────────────────────────\n`;
       out += `_Senjata & Zirah tidak dijual di sini. Buat sendiri dengan *!craft*!_\n\n`;
 
@@ -101,8 +100,7 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
     }
 
 
-    case 'buy':
-    case 'beli': {
+    case 'buy': {
       const itemKey = args[0]?.toLowerCase();
       const qty = parseInt(args[1]) || 1;
 
@@ -142,8 +140,7 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, `✅ Berhasil membeli *${qty}x ${item.name}* seharga *${totalCost.toLocaleString()} Gold*!`);
     }
 
-    case 'equip':
-    case 'pakai': {
+    case 'equip': {
       const itemKey = args[0]?.toLowerCase();
       if (!itemKey) {
         return reply(sock, msg, `❌ Format: *!equip [item_key]*\nContoh: *!equip iron_sword*`);
@@ -184,8 +181,7 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, `✅ Berhasil menggunakan *${item.name}* pada slot ${slot.toUpperCase()}!`);
     }
 
-    case 'unequip':
-    case 'lepas': {
+    case 'unequip': {
       const slot = args[0]?.toLowerCase();
       if (!['weapon', 'armor'].includes(slot)) {
         return reply(sock, msg, `❌ Pilih slot yang ingin dilepas: *!unequip weapon* atau *!unequip armor*`);
@@ -206,8 +202,7 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
       return reply(sock, msg, `✅ Berhasil melepas *${gearName}* dan dikembalikan ke inventory.`);
     }
 
-    case 'use':
-    case 'gunakan': {
+    case 'use': {
       const itemKey = args[0]?.toLowerCase();
       const amountInput = args[1] || "1";
       
@@ -505,6 +500,61 @@ async function handleInventoryCommands(sock, msg, cmd, args, userId) {
       forgeReport += `💰 Sisa Gold-mu: *${player.gold} Gold*`;
 
       return reply(sock, msg, forgeReport);
+    }
+
+    case 'giveitem':
+    case 'give_item':
+    case 'transferitem': {
+      const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+      if (mentions.length === 0) {
+        return reply(sock, msg, `❌ Format: *!giveitem @player [item_key] [jumlah/all]*\nContoh: *!giveitem @628123456789 iron_ore 5*`);
+      }
+
+      const targetId = mentions[0].split('@')[0];
+      if (targetId === userId) {
+        return reply(sock, msg, `❌ Kamu tidak bisa memberikan barang ke diri sendiri.`);
+      }
+
+      const itemKey = args[1]?.toLowerCase();
+      const amountInput = args[2] || "1";
+
+      if (!itemKey || !items[itemKey]) {
+        return reply(sock, msg, `❌ Item tidak dikenal atau tidak ditemukan.`);
+      }
+
+      const item = items[itemKey];
+      const qtyInInv = player.inventory[itemKey] || 0;
+
+      if (qtyInInv <= 0) {
+        return reply(sock, msg, `❌ Kamu tidak memiliki *${item.name}* di dalam inventory!`);
+      }
+
+      const amount = amountInput === 'all' ? qtyInInv : parseInt(amountInput);
+      if (isNaN(amount) || amount <= 0) {
+        return reply(sock, msg, `❌ Jumlah item tidak valid.`);
+      }
+
+      if (qtyInInv < amount) {
+        return reply(sock, msg, `❌ Kamu hanya memiliki *${qtyInInv}x ${item.name}* di dalam inventory.`);
+      }
+
+      const targetPlayer = db.getPlayer(targetId);
+      if (!targetPlayer || !targetPlayer.job) {
+        return reply(sock, msg, `❌ Penerima belum terdaftar dalam game RPG ini.`);
+      }
+
+      // Lakukan transfer
+      player.inventory[itemKey] -= amount;
+      if (player.inventory[itemKey] <= 0) {
+        delete player.inventory[itemKey];
+      }
+
+      targetPlayer.inventory[itemKey] = (targetPlayer.inventory[itemKey] || 0) + amount;
+
+      db.savePlayer(player);
+      db.savePlayer(targetPlayer);
+
+      return reply(sock, msg, `✅ Berhasil memberikan *${amount}x ${item.name}* 📦 ke *${targetPlayer.name}*!`);
     }
   }
 }

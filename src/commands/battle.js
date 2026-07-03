@@ -5,6 +5,7 @@ const combat = require('../rpg/combat');
 const helpers = require('../utils/helpers');
 const { dungeons, worldBossTemplates } = require('../config/monsters');
 const items = require('../config/items');
+const { trackQuestProgress } = require('./quest');
 
 // Helper untuk kirim pesan
 async function reply(sock, msg, text) {
@@ -159,14 +160,7 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         player.gold += goldGain;
         
         // Daily Quest hunt progress
-        const todayStr = new Date().toISOString().slice(0, 10);
-        player.dailyQuest = player.dailyQuest || { date: "", huntProgress: 0, fishProgress: 0, claimed: false };
-        if (player.dailyQuest.date !== todayStr) {
-          player.dailyQuest = { date: todayStr, huntProgress: 0, fishProgress: 0, claimed: false };
-        }
-        if (!player.dailyQuest.claimed) {
-          player.dailyQuest.huntProgress = (player.dailyQuest.huntProgress || 0) + 1;
-        }
+        trackQuestProgress(player, 'huntProgress', 1);
 
         rewardText += `🎉 *MENANG!* mendapatkan *+${expGain} EXP*${penaltyText} & *+${goldGain} Gold* 🪙\n`;
 

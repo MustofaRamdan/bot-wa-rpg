@@ -1,6 +1,7 @@
 // ================== SOCIAL & COMMENTS COMMAND HANDLERS ==================
 
 const db = require('../database/db');
+const classes = require('../rpg/classes');
 
 // Helper untuk kirim pesan
 async function reply(sock, msg, text) {
@@ -27,12 +28,35 @@ async function handleSocialCommands(sock, msg, cmd, args, userId) {
         id: Date.now(),
         userId,
         playerName: player.name,
+        playerJob: player.job ? (classes.jobs[player.job]?.name || player.job) : 'Recruit',
+        playerLevel: player.level,
         text: commentText,
         timestamp: Date.now()
       };
 
+      // Berikan reward harian sekali saja per hari
+      const todayStr = new Date().toISOString().slice(0, 10);
+      player.lastCommentDate = player.lastCommentDate || "";
+      
+      let rewardText = "";
+      if (player.lastCommentDate !== todayStr) {
+        player.lastCommentDate = todayStr;
+        player.gold += 50;
+        player.exp += 100;
+        rewardText = `\n\n🎁 *Daily Comment Reward:* +50 Gold 🪙 & +100 EXP!`;
+
+        // Check level up
+        const helpers = require('../utils/helpers');
+        const isLvlUp = helpers.checkLevelUp(player);
+        if (isLvlUp) {
+          rewardText += `\n🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +3.`;
+        }
+      }
+
       db.saveComment(comment);
-      return reply(sock, msg, `✅ Komentar berhasil ditambahkan ke papan tulis global!`);
+      db.savePlayer(player);
+
+      return reply(sock, msg, `✅ Komentar berhasil ditambahkan ke papan tulis global!${rewardText}`);
     }
 
     case 'comments':
@@ -48,7 +72,8 @@ async function handleSocialCommands(sock, msg, cmd, args, userId) {
 
       recent.forEach((c) => {
         const date = new Date(c.timestamp).toLocaleString('id-ID', { hour12: false });
-        out += `👤 *${c.playerName}*:\n"${c.text}"\n_(${date})_\n\n`;
+        const jobInfo = c.playerJob ? ` (${c.playerJob} Lv. ${c.playerLevel || 1})` : "";
+        out += `👤 *${c.playerName}*${jobInfo}:\n"${c.text}"\n_(${date})_\n\n`;
       });
 
       return reply(sock, msg, out);
