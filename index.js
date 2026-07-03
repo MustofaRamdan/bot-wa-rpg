@@ -1,6 +1,16 @@
 // ================== MAIN ENTRY POINT (BAILEYS CONNECTOR) ==================
 require('dotenv').config();
 
+// Dummy Web Server untuk mencegah Port Scan Timeout di Render
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'alive', message: 'RPG WA Bot is running successfully' }));
+}).listen(PORT, () => {
+  console.log(`📡 Dummy web server listening on port ${PORT}`);
+});
+
 const { 
   default: makeWASocket, 
   useMultiFileAuthState, 
