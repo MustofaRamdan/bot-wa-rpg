@@ -187,8 +187,19 @@ async function startBot() {
 
         await db.loadPlayersToCache(idsToLoad);
 
-        // Jalankan router command
-        await routeCommand(sock, msg, body, userId, pushName, sock);
+        // Jalankan lock keamanan untuk menghindari spam race condition
+        const lock = require('./src/utils/lock');
+        if (!lock.acquireLock(userId)) {
+          console.warn(`⚠️ [CONCURRENCY SHIELD] Mengabaikan command paralel dari ${userId}.`);
+          continue;
+        }
+
+        try {
+          // Jalankan router command
+          await routeCommand(sock, msg, body, userId, pushName, sock);
+        } finally {
+          lock.releaseLock(userId);
+        }
 
       } catch (err) {
         console.error("❌ Error memproses pesan masuk:", err);

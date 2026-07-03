@@ -4,13 +4,13 @@ const db = require('../database/db');
 const classes = require('../rpg/classes');
 
 const DAILY_QUEST = {
-  huntsNeeded: 5,
-  fishNeeded: 3,
+  huntsNeeded: 8,
+  fishNeeded: 5,
   rewards: {
-    exp: 500,
-    gold: 300,
+    exp: 350,
+    gold: 180,
     items: {
-      iron_ore: 3,
+      iron_ore: 2,
       magic_shard: 1
     }
   }
@@ -20,8 +20,8 @@ const ACHIEVEMENTS = [
   {
     id: "hunter_1",
     name: "Monster Hunter I ⚔️",
-    desc: "Kalahkan 10 monster.",
-    check: (p) => (p.battleStats?.monstersKilled || 0) >= 10,
+    desc: "Kalahkan 25 monster.",
+    check: (p) => (p.battleStats?.monstersKilled || 0) >= 25,
     rewardDesc: "+2 STR, +2 VIT",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -32,8 +32,8 @@ const ACHIEVEMENTS = [
   {
     id: "hunter_2",
     name: "Monster Hunter II ☠️",
-    desc: "Kalahkan 50 monster.",
-    check: (p) => (p.battleStats?.monstersKilled || 0) >= 50,
+    desc: "Kalahkan 150 monster.",
+    check: (p) => (p.battleStats?.monstersKilled || 0) >= 150,
     rewardDesc: "+5 STR, +5 VIT",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -44,8 +44,8 @@ const ACHIEVEMENTS = [
   {
     id: "hunter_3",
     name: "Monster Hunter III 🐉",
-    desc: "Kalahkan 200 monster.",
-    check: (p) => (p.battleStats?.monstersKilled || 0) >= 200,
+    desc: "Kalahkan 500 monster.",
+    check: (p) => (p.battleStats?.monstersKilled || 0) >= 500,
     rewardDesc: "+15 STR, +15 VIT",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -56,8 +56,8 @@ const ACHIEVEMENTS = [
   {
     id: "angler_1",
     name: "Angler Beginner 🎣",
-    desc: "Mancing 10 kali.",
-    check: (p) => (p.gatherStats?.totalMancing || 0) >= 10,
+    desc: "Mancing 25 kali.",
+    check: (p) => (p.gatherStats?.totalMancing || 0) >= 25,
     rewardDesc: "+2 AGI, +2 DEX",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -68,8 +68,8 @@ const ACHIEVEMENTS = [
   {
     id: "angler_2",
     name: "Angler Expert 🐠",
-    desc: "Mancing 50 kali.",
-    check: (p) => (p.gatherStats?.totalMancing || 0) >= 50,
+    desc: "Mancing 150 kali.",
+    check: (p) => (p.gatherStats?.totalMancing || 0) >= 150,
     rewardDesc: "+5 AGI, +5 DEX",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -80,8 +80,8 @@ const ACHIEVEMENTS = [
   {
     id: "smith_1",
     name: "Novice Blacksmith 🔨",
-    desc: "Craft 5 equipment.",
-    check: (p) => (p.gatherStats?.totalCraft || 0) >= 5,
+    desc: "Craft 15 equipment.",
+    check: (p) => (p.gatherStats?.totalCraft || 0) >= 15,
     rewardDesc: "+2 INT, +2 VIT",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -92,8 +92,8 @@ const ACHIEVEMENTS = [
   {
     id: "smith_2",
     name: "Grand Artisan 🌋",
-    desc: "Craft 20 equipment.",
-    check: (p) => (p.gatherStats?.totalCraft || 0) >= 20,
+    desc: "Craft 50 equipment.",
+    check: (p) => (p.gatherStats?.totalCraft || 0) >= 50,
     rewardDesc: "+6 INT, +6 VIT",
     grant: (p) => {
       p.achievementStats = p.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
@@ -154,7 +154,7 @@ async function handleQuestCommands(sock, msg, cmd, args, userId) {
       const helpers = require('../utils/helpers');
       const isLvlUp = helpers.checkLevelUp(player);
       if (isLvlUp) {
-        rewardText += `\n🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +5.`;
+        rewardText += `\n🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +3.`;
       }
 
       db.savePlayer(player);

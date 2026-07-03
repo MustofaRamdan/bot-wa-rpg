@@ -37,6 +37,15 @@ const PlayerSchema = new mongoose.Schema({
   inventory: { type: Map, of: Number, default: {} },
   pets: { type: Array, default: [] },
   activePetId: { type: String, default: null },
+  guildTokens: { type: Number, default: 0 },
+  guildContribution: { type: Number, default: 0 },
+  guildStats: {
+    str: { type: Number, default: 0 },
+    int: { type: Number, default: 0 },
+    vit: { type: Number, default: 0 },
+    agi: { type: Number, default: 0 },
+    dex: { type: Number, default: 0 }
+  },
   unlockedPassives: { type: Array, default: [] },
   battleStats: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
   achievementStats: {

@@ -63,7 +63,7 @@ async function routeCommand(sock, msg, body, userId, pushName, client) {
     }
 
     // 7. Guild Commands
-    if (['create_guild', 'createguild', 'guild', 'guild_info', 'guild_invite', 'guild_accept', 'guild_leave'].includes(command)) {
+    if (['create_guild', 'createguild', 'guild', 'guild_info', 'guild_invite', 'guild_accept', 'guild_leave', 'guild_donate', 'guild_upgrade', 'guild_train', 'guild_upstat', 'guild_raid', 'guild_notice', 'guild_kick'].includes(command)) {
       return await handleGuildCommands(sock, msg, command, args, userId);
     }
 

@@ -1,4 +1,4 @@
-// ================== BATTLE & HUNT COMMAND HANDLERS ==================
+// ================== BATTLE & HUNT COMMAND HANDLERS (OVERHAUL - BRUTAL DIFFICULTY) ==================
 
 const db = require('../database/db');
 const combat = require('../rpg/combat');
@@ -20,10 +20,10 @@ function getOrInitWorldBoss() {
       isActive: false,
       name: "Ancient Dragon Fafnir 🐉",
       level: 10,
-      maxHp: 300000,
-      hp: 300000,
-      attack: 300,
-      defense: 120,
+      maxHp: 500000,
+      hp: 500000,
+      attack: 600,
+      defense: 250,
       nextSpawnAt: Date.now() + 1000 * 30, // Spawn dalam 30 detik pertama
       lastKilledAt: 0,
       participants: {}, // userId -> damage
@@ -70,12 +70,12 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
       const now = Date.now();
       const lastHunt = player.cooldown || 0;
       
-      // Cooldown berburu (dikurangi tier pet)
-      let cooldownMs = 30000; // Default 30 detik
+      // Cooldown berburu JAUH lebih lama (90 detik base, pet hanya mengurangi sedikit)
+      let cooldownMs = 90000; // 90 detik base (naik dari 30)
       if (pStats.activePet) {
-        if (pStats.activePet.tier === 'S')   cooldownMs = 25000;
-        else if (pStats.activePet.tier === 'SS')  cooldownMs = 20000;
-        else if (pStats.activePet.tier === 'SSS') cooldownMs = 15000;
+        if (pStats.activePet.tier === 'S')   cooldownMs = 80000;
+        else if (pStats.activePet.tier === 'SS')  cooldownMs = 70000;
+        else if (pStats.activePet.tier === 'SSS') cooldownMs = 55000;
       }
 
       if (now - lastHunt < cooldownMs) {
@@ -83,32 +83,37 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         return reply(sock, msg, `⏳ Kamu sedang beristirahat. Tunggu *${helpers.formatCooldown(timeLeft)}* lagi.`);
       }
 
+      // Cek minimum HP untuk berburu — harus punya minimal 25% HP
+      if (player.hp < Math.floor(pStats.maxHp * 0.25)) {
+        return reply(sock, msg, `❌ HP-mu terlalu rendah untuk berburu! (HP: *${player.hp}/${pStats.maxHp}*).\nGunakan *!use potion* atau tunggu pemulihan!`);
+      }
+
       // Ambil monster acak sesuai level player dan zona eksplorasi
       const baseMonster = helpers.getRandomMonster(player.level, player.zone || 'green_forest');
       
-      // Elite / Champion check
+      // Elite / Champion check — JAUH LEBIH KUAT
       let monster = { ...baseMonster };
       let expMultiplier = 1;
       let goldMultiplier = 1;
-      let lootChance = 0.35;
+      let lootChance = 0.25; // Dikurangi dari 0.35
       
       const randType = Math.random();
-      if (randType < 0.02) { // 2% Champion
+      if (randType < 0.03) { // 3% Champion (naik dari 2%)
         monster.name = `💀 Champion ${monster.name}`;
-        monster.hp = Math.floor(monster.hp * 2.5);
-        monster.attack = Math.floor(monster.attack * 2.0);
-        monster.defense = Math.floor(monster.defense * 1.5);
-        expMultiplier = 3.0;
-        goldMultiplier = 4.0;
-        lootChance = 0.85;
-      } else if (randType < 0.07) { // 5% Elite
+        monster.hp = Math.floor(monster.hp * 4.0);    // Naik dari 2.5
+        monster.attack = Math.floor(monster.attack * 2.8); // Naik dari 2.0
+        monster.defense = Math.floor(monster.defense * 2.2); // Naik dari 1.5
+        expMultiplier = 2.5; // Dikurangi dari 3.0
+        goldMultiplier = 3.0; // Dikurangi dari 4.0
+        lootChance = 0.75;
+      } else if (randType < 0.10) { // 7% Elite (naik dari 5%)
         monster.name = `🔴 Elite ${monster.name}`;
-        monster.hp = Math.floor(monster.hp * 1.5);
-        monster.attack = Math.floor(monster.attack * 1.3);
-        monster.defense = Math.floor(monster.defense * 1.2);
-        expMultiplier = 1.8;
-        goldMultiplier = 2.0;
-        lootChance = 0.60;
+        monster.hp = Math.floor(monster.hp * 2.2);    // Naik dari 1.5
+        monster.attack = Math.floor(monster.attack * 1.8); // Naik dari 1.3
+        monster.defense = Math.floor(monster.defense * 1.6); // Naik dari 1.2
+        expMultiplier = 1.5; // Dikurangi dari 1.8
+        goldMultiplier = 1.5; // Dikurangi dari 2.0
+        lootChance = 0.45;
       }
       
       // Jalankan simulasi tarung
@@ -127,23 +132,29 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         player.battleStats.totalWins++;
         player.battleStats.monstersKilled++;
         
-        // Dapatkan EXP & Gold (anti-inflasi)
-        let expGain = Math.floor(monster.exp * (1 + (player.level * 0.02)) * expMultiplier);
+        // Dapatkan EXP & Gold — DIKURANGI DRASTIS
+        let expGain = Math.floor(monster.exp * (1 + (player.level * 0.01)) * expMultiplier);
         
-        // Penalti EXP jika level monster terlalu jauh di bawah level player
+        // Penalti EXP jika level monster terlalu jauh di bawah level player — LEBIH KETAT
         const lvlDiff = player.level - baseMonster.level;
         let penaltyText = "";
-        if (lvlDiff > 10) {
-          expGain = Math.max(1, Math.floor(expGain * 0.10));
-          penaltyText = " *(Penalti Level: -90% EXP)*";
+        if (lvlDiff > 8) {
+          expGain = Math.max(1, Math.floor(expGain * 0.03)); // Nyaris tidak dapat EXP
+          penaltyText = " *(Penalti Level: -97% EXP)*";
         } else if (lvlDiff > 5) {
-          expGain = Math.max(1, Math.floor(expGain * 0.50));
-          penaltyText = " *(Penalti Level: -50% EXP)*";
+          expGain = Math.max(1, Math.floor(expGain * 0.15));
+          penaltyText = " *(Penalti Level: -85% EXP)*";
+        } else if (lvlDiff > 3) {
+          expGain = Math.max(1, Math.floor(expGain * 0.40));
+          penaltyText = " *(Penalti Level: -60% EXP)*";
+        } else if (lvlDiff > 1) {
+          expGain = Math.max(1, Math.floor(expGain * 0.70));
+          penaltyText = " *(Penalti Level: -30% EXP)*";
         }
 
-        // Gold drop nerf seiring bertambahnya level player untuk mencegah inflasi (nerf 70%)
-        const rawGold = monster.gold * (1 + (Math.random() * 0.2));
-        const goldGain = Math.max(1, Math.floor(((rawGold / 3.3) / (1 + player.level * 0.03)) * goldMultiplier));
+        // Gold drop SANGAT DIPERKETAT — anti-inflasi brutal
+        const rawGold = monster.gold * (1 + (Math.random() * 0.15));
+        const goldGain = Math.max(1, Math.floor(((rawGold / 4.0) / (1 + player.level * 0.05)) * goldMultiplier));
         
         player.exp += expGain;
         player.gold += goldGain;
@@ -160,7 +171,7 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
 
         rewardText += `🎉 *MENANG!* mendapatkan *+${expGain} EXP*${penaltyText} & *+${goldGain} Gold* 🪙\n`;
 
-        // Gacha Drop Item (peluang disesuaikan tipe monster)
+        // Gacha Drop Item — peluang dikurangi
         if (monster.drops && monster.drops.length > 0 && Math.random() < lootChance) {
           const dropKey = monster.drops[Math.floor(Math.random() * monster.drops.length)];
           const item = items[dropKey];
@@ -173,31 +184,47 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         // Cek Level Up
         const isLvlUp = helpers.checkLevelUp(player);
         if (isLvlUp) {
-          rewardText += `🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +5.\n`;
+          rewardText += `🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +3.\n`;
         }
 
       } else if (result.draw) {
-        // Seri (kehabisan turn)
-        rewardText += `🤝 *DRAW!* Kedua petarung kelelahan. Tidak ada gold/exp yang hilang.\n`;
+        // Seri (kehabisan turn) — SEKARANG ADA PENALTI KECIL
+        const drawGoldLoss = Math.floor(player.gold * 0.03);
+        player.gold = Math.max(0, player.gold - drawGoldLoss);
+        rewardText += `🤝 *DRAW!* Kedua petarung kelelahan. Kehilangan *-${drawGoldLoss} Gold* (biaya stamina).\n`;
       } else {
-        // Kalah!
+        // Kalah! — PENALTI SANGAT BERAT
         player.battleStats.totalLosses++;
         
-        // Pinalti mati: Kehilangan 10% Gold di tas & HP diset ke 30% Max HP.
-        // Jika gold di tas > 50.000, kehilangan 5% Gold BANK juga.
-        const lostGold = Math.floor(player.gold * 0.10);
+        // Pinalti mati BRUTAL:
+        // 1. Kehilangan 25% Gold di tas (naik dari 10%)
+        const lostGold = Math.floor(player.gold * 0.25);
         player.gold = Math.max(0, player.gold - lostGold);
         
+        // 2. Kehilangan Gold BANK jika tas > 15k (threshold diturunkan, persentase naik)
         let bankPenaltyText = "";
-        if (player.gold > 50000 && player.bank > 0) {
-          const lostBank = Math.floor(player.bank * 0.05);
+        if (player.gold > 15000 && player.bank > 0) {
+          const lostBank = Math.floor(player.bank * 0.10); // Naik dari 5%
           player.bank = Math.max(0, player.bank - lostBank);
           bankPenaltyText = ` dan *-${lostBank} Gold* di Bank`;
         }
         
-        player.hp = Math.floor(pStats.maxHp * 0.3); // Revive di 30% HP
+        // 3. HP diset ke 10% Max HP (turun dari 30%)
+        player.hp = Math.max(1, Math.floor(pStats.maxHp * 0.10));
         
-        rewardText += `💀 *KALAH!* Kamu terluka parah. Kehilangan *-${lostGold} Gold* di tas${bankPenaltyText} (Pinalti kematian).\nHP dipulihkan ke 30% (*${player.hp} HP*).\n`;
+        // 4. KEHILANGAN EXP (5% dari EXP yang dibutuhkan level berikutnya) — BARU!
+        const expNeeded = require('../rpg/classes').getExpNeeded(player.level);
+        const expLost = Math.floor(expNeeded * 0.05);
+        player.exp = Math.max(0, player.exp - expLost);
+        
+        // 5. MP dihabiskan 50%
+        player.mp = Math.floor(player.mp * 0.5);
+        
+        rewardText += `💀 *KALAH!* Kamu terluka sangat parah!\n`;
+        rewardText += `• Kehilangan *-${lostGold} Gold* di tas${bankPenaltyText}\n`;
+        rewardText += `• Kehilangan *-${expLost} EXP* (penalti kematian)\n`;
+        rewardText += `• HP dipulihkan ke 10% (*${player.hp} HP*)\n`;
+        rewardText += `• MP terkuras 50% (*${player.mp} MP*)\n`;
       }
 
       db.savePlayer(player);
@@ -234,14 +261,30 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         return reply(sock, msg, `❌ MP tidak cukup! Butuh *${d.mpCost} MP* (MP saat ini: *${player.mp}*).\nGunakan *!use potion* atau *!use ether*!`);
       }
 
-      const dungeonGoldCost = d.minLevel * 25;
+      // Dungeon cooldown — 15 MENIT (BARU!)
+      const now_d = Date.now();
+      const dungeonCd = player.dungeonCooldown || 0;
+      const dungeonCooldownMs = 900000; // 15 menit
+      if (now_d - dungeonCd < dungeonCooldownMs) {
+        const timeLeft = dungeonCooldownMs - (now_d - dungeonCd);
+        return reply(sock, msg, `⏳ Kamu terlalu lelah untuk masuk dungeon! Tunggu *${helpers.formatCooldown(timeLeft)}* lagi.`);
+      }
+
+      // Biaya gold masuk dungeon NAIK
+      const dungeonGoldCost = d.minLevel * 50; // Naik dari 25
       if (player.gold < dungeonGoldCost) {
         return reply(sock, msg, `❌ Gold tidak cukup! Butuh *${dungeonGoldCost} Gold* 🪙 untuk masuk ke dungeon ini (Gold kamu: *${player.gold} Gold*).`);
       }
 
-      // Potong MP dan Gold masuk dungeon
+      // Cek minimum HP
+      if (player.hp < Math.floor(pStats.maxHp * 0.40)) {
+        return reply(sock, msg, `❌ HP-mu terlalu rendah untuk masuk dungeon! Butuh minimal 40% HP.\n(HP: *${player.hp}/${pStats.maxHp}*). Gunakan *!use potion*!`);
+      }
+
+      // Potong MP, Gold, dan set cooldown
       player.mp -= d.mpCost;
       player.gold -= dungeonGoldCost;
+      player.dungeonCooldown = now_d;
       db.savePlayer(player);
 
       let dungeonLog = `🕳️ *MENJELAJAHI DUNGEON: ${d.name}* 🕳️\n`;
@@ -315,7 +358,7 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
         rewardText += `\n🏆 *DUNGEON CLEAR REWARDS!*\n`;
         rewardText += `• +${expReward} EXP\n• +${goldReward} Gold 🪙\n`;
 
-        // Roll Boss Drops
+        // Roll Boss Drops (peluang dikurangi)
         for (const [itemKey, chance] of Object.entries(boss.drops)) {
           if (Math.random() <= chance) {
             player.inventory[itemKey] = (player.inventory[itemKey] || 0) + 1;
@@ -325,12 +368,22 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
 
         const isLvlUp = helpers.checkLevelUp(player);
         if (isLvlUp) {
-          rewardText += `🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +5.\n`;
+          rewardText += `🌟 *LEVEL UP!* Sekarang kamu mencapai *Level ${player.level}*! Poin stat bertambah +3.\n`;
         }
       } else {
-        // Jika mati di dungeon, HP diset ke 30%
-        player.hp = Math.floor(pStats.maxHp * 0.3);
-        rewardText += `\n💀 *EXPLORATION FAILED!*\nKamu dievakuasi keluar dungeon. HP dipulihkan ke 30% (*${player.hp} HP*).\n`;
+        // Jika mati di dungeon — PENALTI BERAT
+        player.hp = Math.max(1, Math.floor(pStats.maxHp * 0.10)); // 10% HP (turun dari 30%)
+        player.mp = Math.floor(player.mp * 0.3); // MP terkuras 70%
+        const expNeeded = require('../rpg/classes').getExpNeeded(player.level);
+        const expLost = Math.floor(expNeeded * 0.08); // Kehilangan 8% EXP
+        player.exp = Math.max(0, player.exp - expLost);
+        const goldLost = Math.floor(player.gold * 0.15);
+        player.gold = Math.max(0, player.gold - goldLost);
+        
+        rewardText += `\n💀 *EXPLORATION FAILED!*\n`;
+        rewardText += `• Kehilangan *-${expLost} EXP* (penalti dungeon)\n`;
+        rewardText += `• Kehilangan *-${goldLost} Gold* 🪙\n`;
+        rewardText += `• HP dipulihkan ke 10% (*${player.hp} HP*)\n`;
       }
 
       db.savePlayer(player);
@@ -340,20 +393,20 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
 
     case 'worldboss':
     case 'boss': {
-      const wbGoldCost = 100;
+      const wbGoldCost = 200; // Naik dari 100
       if (player.gold < wbGoldCost) {
-        return reply(sock, msg, `❌ Gold tidak cukup! Menyerang World Boss membutuhkan *100 Gold* 🪙 (Gold kamu: *${player.gold} Gold*).`);
+        return reply(sock, msg, `❌ Gold tidak cukup! Menyerang World Boss membutuhkan *${wbGoldCost} Gold* 🪙 (Gold kamu: *${player.gold} Gold*).`);
       }
 
       const boss = getOrInitWorldBoss();
       const now = Date.now();
 
-      // Cooldown World Boss per player
-      let bossCooldownMs = 12000; // 12 detik default
+      // Cooldown World Boss per player — JAUH lebih lama
+      let bossCooldownMs = 45000; // 45 detik (naik dari 12)
       if (pStats.activePet) {
-        if (pStats.activePet.tier === 'S') bossCooldownMs = 10000;
-        else if (pStats.activePet.tier === 'SS') bossCooldownMs = 8000;
-        else if (pStats.activePet.tier === 'SSS') bossCooldownMs = 5000;
+        if (pStats.activePet.tier === 'S') bossCooldownMs = 38000;
+        else if (pStats.activePet.tier === 'SS') bossCooldownMs = 30000;
+        else if (pStats.activePet.tier === 'SSS') bossCooldownMs = 22000;
       }
 
       if (now - (player.bossCooldown || 0) < bossCooldownMs) {
@@ -380,22 +433,21 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
       player.gold -= wbGoldCost;
 
       // Hitung damage ke Boss (Turn-based ringkas 1 turn)
-      // Hitung Physical / Magic Attack terbaik dari status player
       const baseAtk = Math.max(pStats.patk, pStats.matk);
-      const randomVariance = Math.floor(Math.random() * (player.level * 3 + 10));
-      let rawDamage = Math.max(10, baseAtk + randomVariance - boss.defense);
+      const randomVariance = Math.floor(Math.random() * (player.level * 2 + 5));
+      let rawDamage = Math.max(5, baseAtk + randomVariance - boss.defense);
 
-      // Emas/Crit chance player
+      // Crit chance player
       const isCrit = Math.random() * 100 <= pStats.critRate;
       if (isCrit) {
-        rawDamage = Math.floor(rawDamage * 1.5);
+        rawDamage = Math.floor(rawDamage * 1.4); // Dikurangi dari 1.5
       }
 
-      // Tambahan pet
+      // Tambahan pet (dikurangi)
       let petDamage = 0;
       if (pStats.activePet) {
-        if (pStats.activePet.tier === 'SS') petDamage = Math.floor(rawDamage * (0.5 + Math.random() * 0.3));
-        if (pStats.activePet.tier === 'SSS') petDamage = Math.floor(rawDamage * (1.2 + Math.random() * 0.5));
+        if (pStats.activePet.tier === 'SS') petDamage = Math.floor(rawDamage * (0.3 + Math.random() * 0.2));
+        if (pStats.activePet.tier === 'SSS') petDamage = Math.floor(rawDamage * (0.7 + Math.random() * 0.3));
       }
 
       const totalDmgDealt = rawDamage + petDamage;
@@ -420,13 +472,13 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
       }
       log += `🔥 Total damage-mu ke boss: *${totalDmgDealt} damage*\n\n`;
 
-      // Boss membalas player
-      let bossAtk = boss.attack + Math.floor(Math.random() * 50);
+      // Boss membalas player — LEBIH KERAS
+      let bossAtk = boss.attack + Math.floor(Math.random() * (80 + boss.level * 2));
       let playerDef = pStats.pdef;
-      let bossDamage = Math.max(10, bossAtk - playerDef);
+      let bossDamage = Math.max(15, bossAtk - playerDef);
       
       // Kehilangan HP player
-      player.hp = Math.max(1, player.hp - bossDamage); // Minimal tersisa 1 HP agar tidak mati seketika
+      player.hp = Math.max(1, player.hp - bossDamage); // Minimal tersisa 1 HP
       log += `👊 *${boss.name}* membalas seranganmu: *-${bossDamage} HP*!\n`;
       log += `❤️ HP-mu sekarang: ${player.hp}/${pStats.maxHp}\n`;
 
@@ -434,7 +486,7 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
       if (boss.hp <= 0) {
         boss.isActive = false;
         boss.lastKilledAt = now;
-        boss.nextSpawnAt = now + 1000 * 60 * 60 * 2; // Spawn 2 jam lagi
+        boss.nextSpawnAt = now + 1000 * 60 * 60 * 3; // Spawn 3 jam lagi (naik dari 2)
 
         log += `\n🏆 *WORLD BOSS TELAH DIKALAHKAN!* 🏆\n`;
         log += `Menghitung hadiah kontributor...\n────────────────────────\n`;
@@ -448,41 +500,41 @@ async function handleBattleCommands(sock, msg, cmd, args, userId, client) {
 
         const top1 = contributors[0];
 
-        // Bagikan reward ke seluruh kontributor aktif
+        // Bagikan reward ke seluruh kontributor aktif — REWARD DIKURANGI
         for (const contrib of contributors) {
           const share = contrib.dmg / totalDmgDone;
-          const goldGain = Math.max(200, Math.floor(10000 * share));
-          const expGain = Math.max(100, Math.floor(5000 * share));
+          const goldGain = Math.max(100, Math.floor(6000 * share)); // Dikurangi dari 10000
+          const expGain = Math.max(50, Math.floor(3000 * share)); // Dikurangi dari 5000
 
           const p = db.getPlayer(contrib.id);
           p.gold += goldGain;
           p.exp += expGain;
 
-          // Drop item dengan peluang (chance-based loot pool)
+          // Drop item dengan peluang — PELUANG DIKURANGI
           let droppedItems = [];
           const rand = Math.random() * 100;
           
           if (top1 && contrib.id === top1.id) {
-            // MVP Loot Pool
-            if (rand < 45) droppedItems.push("egg_mythic");
-            else droppedItems.push("egg_legends");
+            // MVP Loot Pool — dikurangi
+            if (rand < 30) droppedItems.push("egg_mythic"); // 45 → 30
+            else if (rand < 70) droppedItems.push("egg_legends");
 
-            if (Math.random() < 0.50) droppedItems.push("magic_shard");
-            if (Math.random() < 0.30) droppedItems.push("elixir");
+            if (Math.random() < 0.35) droppedItems.push("magic_shard");
+            if (Math.random() < 0.20) droppedItems.push("elixir");
           } else if (share >= 0.20) {
             // High Tier Loot Pool
-            if (rand < 30) droppedItems.push("egg_legends");
-            else if (rand < 75) droppedItems.push("egg_rare");
+            if (rand < 20) droppedItems.push("egg_legends"); // 30 → 20
+            else if (rand < 55) droppedItems.push("egg_rare");
 
-            if (Math.random() < 0.30) droppedItems.push("magic_shard");
+            if (Math.random() < 0.20) droppedItems.push("magic_shard");
           } else if (share >= 0.05) {
             // Mid Tier Loot Pool
-            if (rand < 25) droppedItems.push("egg_rare");
-            else if (rand < 65) droppedItems.push("egg_uncommon");
+            if (rand < 15) droppedItems.push("egg_rare");
+            else if (rand < 45) droppedItems.push("egg_uncommon");
           } else {
             // Low Tier Loot Pool
-            if (rand < 10) droppedItems.push("egg_uncommon");
-            else if (rand < 40) droppedItems.push("egg_common");
+            if (rand < 5) droppedItems.push("egg_uncommon");
+            else if (rand < 25) droppedItems.push("egg_common");
           }
 
           for (const itemKey of droppedItems) {

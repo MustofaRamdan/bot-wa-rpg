@@ -165,13 +165,18 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
         return reply(sock, msg, `❌ Poin kamu tidak cukup! Kamu hanya memiliki *${player.statPoints}* Stat Points.`);
       }
 
-      // Biaya alokasi stat setelah level 20
+      // Biaya alokasi stat setelah level 10, 20, dan 35
       let goldCost = 0;
-      if (player.level > 20) {
-        goldCost = amount * 50;
-        if (player.gold < goldCost) {
-          return reply(sock, msg, `❌ Gold tidak cukup! Mengalokasikan stat di atas level 20 membutuhkan *50 Gold* per poin.\n💰 Butuh: *${goldCost} Gold*\n👛 Kamu hanya memiliki: *${player.gold} Gold*.`);
-        }
+      if (player.level >= 35) {
+        goldCost = amount * 150;
+      } else if (player.level >= 20) {
+        goldCost = amount * 80;
+      } else if (player.level >= 10) {
+        goldCost = amount * 30;
+      }
+
+      if (goldCost > 0 && player.gold < goldCost) {
+        return reply(sock, msg, `❌ Gold tidak cukup! Mengalokasikan stat di level ${player.level} membutuhkan *${goldCost} Gold* (Gold kamu: *${player.gold} Gold*).`);
       }
 
       player.stats[statType] = (player.stats[statType] || 0) + amount;
@@ -219,11 +224,10 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
       }
 
       const streak = player.battleStats.dailyStreak;
-      const baseGold = 150;
-      const bonusGold = Math.min(streak * 20, 400); // Maksimal bonus streak 400 Gold
-      const totalGold = baseGold + bonusGold;
+      const baseGold = 80; // Dikurangi dari 150
+      const bonusGold = Math.min(streak * 10, 200); // Dikurangi dari 20 Gold per streak dan max 400 → 10 Gold per streak dan max 200
 
-      player.gold += totalGold;
+      player.gold += totalGold = baseGold + bonusGold;
       player.lastDaily = now;
 
       // Drop item acak
@@ -247,7 +251,17 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
     case 'promote':
     case 'promosi': {
       if (!player.job) return reply(sock, msg, `❌ Kamu belum mendaftar. Ketik *!register*!`);
-      if (player.level < 30) return reply(sock, msg, `❌ Kamu butuh *Level 30* untuk promosi job! (Level-mu saat ini: *Level ${player.level}*).`);
+      
+      const mKilled = player.battleStats?.monstersKilled || 0;
+      const dCompleted = player.battleStats?.dungeonsCompleted || 0;
+
+      if (player.level < 30) {
+        return reply(sock, msg, `❌ Kamu butuh *Level 30* untuk promosi job! (Level-mu saat ini: *Level ${player.level}*).`);
+      }
+      
+      if (mKilled < 100 || dCompleted < 3) {
+        return reply(sock, msg, `❌ Persyaratan promosi belum lengkap!\n• Level 30 (Selesai: Lv. ${player.level})\n• Kalahkan 100 monster (Progres: ${mKilled}/100)\n• Selesaikan 3 dungeon (Progres: ${dCompleted}/3)`);
+      }
 
       const promotionMap = {
         warrior: 'lord_knight',
@@ -285,7 +299,7 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
       const allowedJobs = ['warrior', 'paladin', 'mage', 'cleric', 'rogue', 'archer', 'berserker', 'monk'];
       
       if (!newJobKey || !allowedJobs.includes(newJobKey)) {
-        let listJobs = `📝 *DAFTAR JOB DASAR YANG DAPAT DIPILIH (Biaya: Level * 500 Gold)*:\n\n`;
+        let listJobs = `📝 *DAFTAR JOB DASAR YANG DAPAT DIPILIH (Biaya: Level * 1000 Gold)*:\n\n`;
         allowedJobs.forEach(k => {
           listJobs += `• *${classes.jobs[k].name}* (Key: \`${k}\`)\n  _${classes.jobs[k].description}_\n`;
         });
@@ -297,7 +311,7 @@ _${targetPlayer.statPoints > 0 ? "Ketik *!stat_add [str/int/vit/agi/dex] [jumlah
         return reply(sock, msg, `❌ Kamu sudah menjadi job *${classes.jobs[newJobKey].name}*!`);
       }
 
-      const cost = Math.max(2000, player.level * 500);
+      const cost = Math.max(4000, player.level * 1000); // Naik dari 2000 / 500 per level
       if (player.gold < cost) {
         return reply(sock, msg, `❌ Gold tidak cukup! Ganti job membutuhkan *${cost.toLocaleString()} Gold* 🪙 (Gold kamu: *${player.gold.toLocaleString()} Gold*).`);
       }

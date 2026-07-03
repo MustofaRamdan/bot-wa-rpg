@@ -16,8 +16,8 @@ function checkLevelUp(player) {
     player.exp -= needed;
     player.level++;
     
-    // Berikan 5 Stat Points untuk didistribusikan secara manual
-    player.statPoints += 5;
+    // Berikan 3 Stat Points untuk didistribusikan secara manual (dikurangi dari 5)
+    player.statPoints += 3;
     
     leveledUp = true;
     needed = classes.getExpNeeded(player.level);

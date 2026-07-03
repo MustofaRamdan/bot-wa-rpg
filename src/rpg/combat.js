@@ -1,4 +1,4 @@
-// ================== TURN-BASED COMBAT ENGINE ==================
+// ================== TURN-BASED COMBAT ENGINE (OVERHAUL - HARD MODE) ==================
 
 const classes = require('./classes');
 const items = require('../config/items');
@@ -16,13 +16,14 @@ function getDerivedStats(player) {
   const baseAgi = job.baseStats.agi + (lvlMultiplier * job.growth.agi);
   const baseDex = job.baseStats.dex + (lvlMultiplier * job.growth.dex);
 
-  // 2. Tambahkan Poin Alokasi Player & Bonus Achievement
+  // 2. Tambahkan Poin Alokasi Player, Bonus Achievement, & Stats Guild Training Hall
   const ach = player.achievementStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
-  let totalStr = baseStr + (player.stats.str || 0) + (ach.str || 0);
-  let totalInt = baseInt + (player.stats.int || 0) + (ach.int || 0);
-  let totalVit = baseVit + (player.stats.vit || 0) + (ach.vit || 0);
-  let totalAgi = baseAgi + (player.stats.agi || 0) + (ach.agi || 0);
-  let totalDex = baseDex + (player.stats.dex || 0) + (ach.dex || 0);
+  const gStats = player.guildStats || { str: 0, int: 0, vit: 0, agi: 0, dex: 0 };
+  let totalStr = baseStr + (player.stats.str || 0) + (ach.str || 0) + (gStats.str || 0);
+  let totalInt = baseInt + (player.stats.int || 0) + (ach.int || 0) + (gStats.int || 0);
+  let totalVit = baseVit + (player.stats.vit || 0) + (ach.vit || 0) + (gStats.vit || 0);
+  let totalAgi = baseAgi + (player.stats.agi || 0) + (ach.agi || 0) + (gStats.agi || 0);
+  let totalDex = baseDex + (player.stats.dex || 0) + (ach.dex || 0) + (gStats.dex || 0);
 
   // 3. Tambahkan Efek Equipment
   let weaponFlatAtk = 0;
@@ -80,12 +81,49 @@ function getDerivedStats(player) {
   const agi = Math.floor(totalAgi);
   const dex = Math.floor(totalDex);
 
-  // 5. Hitung Derived Stats menggunakan formula RPG
-  const maxHp = classes.getMaxHp(player.level, vit);
-  const maxMp = classes.getMaxMp(player.level, int);
-  const patk = classes.getPhysicalAttack(str, weaponFlatAtk) + petBonusAtk;
-  const matk = classes.getMagicAttack(int) + petBonusAtk;
-  const pdef = classes.getPhysicalDefense(vit, armorFlatDef) + petBonusDef;
+  // Tambahan efek Level Guild (Passive Stats Buff)
+  let guildHpBonus = 1.0;
+  let guildMpBonus = 1.0;
+  let guildAtkBonus = 1.0;
+  let guildDefBonus = 1.0;
+
+  if (player.guild) {
+    const db = require('../database/db'); // lazy load
+    const guild = db.getGuild(player.guild);
+    if (guild) {
+      const gLvl = guild.level || 1;
+      if (gLvl >= 5) {
+        guildHpBonus = 1.05;
+        guildMpBonus = 1.05;
+        guildAtkBonus = 1.05;
+        guildDefBonus = 1.04;
+      } else if (gLvl === 4) {
+        guildHpBonus = 1.04;
+        guildMpBonus = 1.04;
+        guildAtkBonus = 1.03;
+        guildDefBonus = 1.02;
+      } else if (gLvl === 3) {
+        guildHpBonus = 1.03;
+        guildMpBonus = 1.03;
+        guildAtkBonus = 1.02;
+        guildDefBonus = 1.01;
+      } else if (gLvl === 2) {
+        guildHpBonus = 1.02;
+        guildMpBonus = 1.02;
+        guildAtkBonus = 1.01;
+      } else if (gLvl === 1) {
+        guildHpBonus = 1.01;
+        guildMpBonus = 1.01;
+      }
+    }
+  }
+
+  // 5. Hitung Derived Stats menggunakan formula RPG baru (SANGAT stats-dependent)
+  const maxHp = Math.floor(classes.getMaxHp(player.level, vit) * guildHpBonus);
+  const maxMp = Math.floor(classes.getMaxMp(player.level, int) * guildMpBonus);
+  const patk = Math.floor((classes.getPhysicalAttack(str, weaponFlatAtk) + petBonusAtk) * guildAtkBonus);
+  const matk = Math.floor((classes.getMagicAttack(int) + petBonusAtk) * guildAtkBonus);
+  const pdef = Math.floor((classes.getPhysicalDefense(vit, armorFlatDef) + petBonusDef) * guildDefBonus);
   const critRate = classes.getCriticalRate(agi);
   const evasionRate = classes.getEvasionRate(agi);
   const accuracy = classes.getAccuracyRate(dex);
@@ -99,15 +137,16 @@ function getDerivedStats(player) {
   };
 }
 
-// Simulasi Pertarungan Turn-Based (Player vs Monster)
+// Simulasi Pertarungan Turn-Based (Player vs Monster) — HARD MODE
 function simulateCombat(player, monster) {
   const pStats = getDerivedStats(player);
   
   // Monster stats scaling based on player level difference (anti-easy-farming)
+  // Scaling lebih agresif: monster jadi JAUH lebih kuat jika player over-level
   const lvlDiff = Math.max(0, player.level - monster.level);
-  const mMaxHp = Math.floor(monster.hp * (1 + lvlDiff * 0.05));
-  const mAttack = Math.floor(monster.attack * (1 + lvlDiff * 0.03));
-  const mDefense = Math.floor(monster.defense * (1 + lvlDiff * 0.02));
+  const mMaxHp = Math.floor(monster.hp * (1 + lvlDiff * 0.08));
+  const mAttack = Math.floor(monster.attack * (1 + lvlDiff * 0.05));
+  const mDefense = Math.floor(monster.defense * (1 + lvlDiff * 0.04));
 
   let pHP = player.hp;
   let pMP = player.mp;
@@ -120,7 +159,7 @@ function simulateCombat(player, monster) {
 
   let pShield = 0;           // Buff Paladin
   let pCritBonus = 0;        // Buff Archer
-  let pEvaBonus = hasPassive('shadow_assault') ? 15 : 0; // Buff Rogue + Pasif Shadow Assault
+  let pEvaBonus = hasPassive('shadow_assault') ? 12 : 0; // Buff Rogue + Pasif Shadow Assault (dikurangi)
   let pStrBuff = 1.0;        // Buff Berserker
   let pDefDebuff = 1.0;      // Debuff Berserker
 
@@ -136,10 +175,10 @@ function simulateCombat(player, monster) {
   while (pHP > 0 && mHP > 0 && turn <= maxTurns) {
     log += `*Turn ${turn}*\n`;
 
-    // Pasif Monk Chakra Meditation
+    // Pasif Monk Chakra Meditation (dikurangi: 3% → 1.5%)
     if (hasPassive('chakra_meditation')) {
-      const regenHp = Math.max(1, Math.floor(pStats.maxHp * 0.03));
-      const regenMp = Math.max(1, Math.floor(pStats.maxMp * 0.03));
+      const regenHp = Math.max(1, Math.floor(pStats.maxHp * 0.015));
+      const regenMp = Math.max(1, Math.floor(pStats.maxMp * 0.02));
       pHP = Math.min(pStats.maxHp, pHP + regenHp);
       pMP = Math.min(pStats.maxMp, pMP + regenMp);
       log += `🧘 *Chakra Meditation:* Memulihkan *+${regenHp} HP* & *+${regenMp} MP*.\n`;
@@ -151,7 +190,7 @@ function simulateCombat(player, monster) {
     let actionText = "";
     let pDamage = 0;
     
-    // Logika AI Menggunakan Skill
+    // Logika AI Menggunakan Skill (dinaikkan ke 75% chance)
     let usedSkill = null;
     const jobKey = player.job || 'warrior';
     const jobConfig = classes.jobs[jobKey];
@@ -160,7 +199,7 @@ function simulateCombat(player, monster) {
       const skills = jobConfig.skills;
       const canCast = skills.filter(s => pMP >= s.mpCost);
       
-      if (canCast.length > 0 && Math.random() < 0.6) { // 60% chance pakai skill
+      if (canCast.length > 0 && Math.random() < 0.75) { // 75% chance pakai skill (naik dari 60%)
         if (jobKey === 'cleric' && pHP < pStats.maxHp * 0.5) {
           usedSkill = skills.find(s => s.key === 'cure') || canCast[0];
         } else if (jobKey === 'high_priest' && pHP < pStats.maxHp * 0.5) {
@@ -215,7 +254,7 @@ function simulateCombat(player, monster) {
           baseDmg = pStats.str * pStrBuff * 3.0;
         } else if (usedSkill.key === 'grand_cross') {
           baseDmg = (pStats.vit * 2.0) + (pStats.int * 2.0);
-          const healAmount = Math.floor(pStats.maxHp * 0.15);
+          const healAmount = Math.floor(pStats.maxHp * 0.12); // Dikurangi dari 15% → 12%
           pHP = Math.min(pStats.maxHp, pHP + healAmount);
           actionText += `💚 Grand Cross memulihkan *+${healAmount} HP*.\n`;
         } else if (usedSkill.key === 'meteor_storm') {
@@ -225,7 +264,7 @@ function simulateCombat(player, monster) {
         } else if (usedSkill.key === 'sharp_shooting') {
           baseDmg = pStats.dex * 3.2;
         } else if (usedSkill.key === 'guillotine_slash') {
-          if (mHP <= mMaxHp * 0.25) {
+          if (mHP <= mMaxHp * 0.20) { // Threshold dikurangi dari 25% → 20%
             baseDmg = mHP + 9999;
             actionText += `🩸 *GUILLOTINE EXECUTION!* Musuh langsung dipancung!\n`;
           } else {
@@ -237,37 +276,40 @@ function simulateCombat(player, monster) {
           actionText += `👊🔥 Mengonsumsi seluruh MP untuk Asura Strike!\n`;
         }
 
-        // Cek Akurasi Player (Mage & Cleric Magic Skills tidak bisa meleset)
+        // Cek Akurasi Player — DEX SANGAT PENTING, tanpa DEX sering miss!
         const isMagic = usedSkill.damageType === 'magic';
-        const mEvasion = 2 + (monster.level * 0.5);
-        const finalAcc = pStats.accuracy + (pCritBonus > 0 ? 20 : 0);
-        const playerHitChance = Math.max(50, Math.min(98, finalAcc - mEvasion));
+        // Monster evasion lebih tinggi: base 8 + level * 1.0 (naik dari 2 + level * 0.5)
+        const mEvasion = 8 + (monster.level * 1.0);
+        const finalAcc = pStats.accuracy + (pCritBonus > 0 ? 15 : 0);
+        // Hit chance dihitung dari accuracy - monster evasion, floor lebih rendah
+        const playerHitChance = Math.max(35, Math.min(96, finalAcc - mEvasion));
         const isHit = isMagic || (Math.random() * 100 <= playerHitChance);
         
         if (!isHit) {
-          actionText += `💨 Serangan meleset! (Monster menghindar)\n`;
+          actionText += `💨 Serangan meleset! (Monster menghindar) [Akurasi: ${playerHitChance}%]\n`;
         } else {
-          // Cek Critical (Sneak Attack, Sharp Shooting & Sonic Blow mendapat buff crit)
+          // Cek Critical
           const isCrit = usedSkill.key === 'sneak_attack' ||
-                         (usedSkill.key === 'sharp_shooting' && Math.random() * 100 <= pStats.critRate + 50) ||
-                         (usedSkill.key === 'sonic_blow' && Math.random() * 100 <= pStats.critRate + 30) ||
-                         (Math.random() * 100 <= pStats.critRate + (pCritBonus > 0 ? 20 : 0));
+                         (usedSkill.key === 'sharp_shooting' && Math.random() * 100 <= pStats.critRate + 45) ||
+                         (usedSkill.key === 'sonic_blow' && Math.random() * 100 <= pStats.critRate + 25) ||
+                         (Math.random() * 100 <= pStats.critRate + (pCritBonus > 0 ? 15 : 0));
                          
-          const minDmg = Math.max(5, Math.ceil(baseDmg * 0.20));
+          // Minimum damage lebih rendah — defense lebih terasa (8% baseDmg, turun dari 20%)
+          const minDmg = Math.max(3, Math.ceil(baseDmg * 0.08));
           const actualMDefense = hasPassive('armor_piercing') ? Math.floor(mDefense * 0.70) : mDefense;
           const targetDef = (usedSkill.key === 'spiral_pierce') ? 0 : actualMDefense;
           
           let damage = Math.max(minDmg, baseDmg - targetDef);
           
           if (isCrit) {
-            const critMult = hasPassive('shadow_assault') ? 2.0 : 1.5;
+            const critMult = hasPassive('shadow_assault') ? 1.8 : 1.4; // Dikurangi dari 2.0/1.5
             damage = Math.floor(damage * critMult);
             actionText += `💥 *CRITICAL HIT!* `;
           }
 
           if (hasPassive('low_hp_frenzy')) {
             const hpLossPercent = (pStats.maxHp - pHP) / pStats.maxHp;
-            const frenzyMult = 1.0 + (hpLossPercent * 0.5);
+            const frenzyMult = 1.0 + (hpLossPercent * 0.4); // Dikurangi dari 0.5
             damage = Math.floor(damage * frenzyMult);
           }
           
@@ -285,7 +327,7 @@ function simulateCombat(player, monster) {
           } else if (usedSkill.key === 'sneak_attack') {
             poisonTurns = 3;
             actionText += `🤢 Sneak Attack meracuni musuh selama 3 turn!\n`;
-          } else if (usedSkill.key === 'dragon_fist' && Math.random() < 0.25) {
+          } else if (usedSkill.key === 'dragon_fist' && Math.random() < 0.20) { // Dikurangi dari 25%
             bossStunned = true;
             actionText += `💫 Dragon Fist membuat musuh Stun!\n`;
           }
@@ -294,19 +336,19 @@ function simulateCombat(player, monster) {
       } else if (usedSkill.type === 'heal') {
         let healAmount = 0;
         if (usedSkill.key === 'cure') {
-          healAmount = (pStats.int * 2.0) + (pStats.vit * 1.0);
+          healAmount = (pStats.int * 1.8) + (pStats.vit * 0.8); // Dikurangi dari 2.0/1.0
         } else if (usedSkill.key === 'chakra') {
-          healAmount = (pStats.str * pStrBuff * 0.5) + 20;
-          pMP = Math.min(pStats.maxMp, pMP + (pStats.int * 1.0) + 5);
+          healAmount = (pStats.str * pStrBuff * 0.4) + 15; // Dikurangi
+          pMP = Math.min(pStats.maxMp, pMP + (pStats.int * 0.8) + 3); // Dikurangi
           actionText += `🧘 Memulihkan MP.\n`;
         } else if (usedSkill.key === 'sanctuary') {
-          healAmount = pStats.maxHp;
-          pDefBonus = 30;
-          actionText += `⛪ Sanctuary meningkatkan DEF +30%!\n`;
+          healAmount = Math.floor(pStats.maxHp * 0.75); // Dikurangi dari HP penuh → 75% Max HP
+          pDefBonus = 25; // Dikurangi dari 30
+          actionText += `⛪ Sanctuary meningkatkan DEF +25%!\n`;
         }
 
         if (hasPassive('divine_favor')) {
-          healAmount = Math.floor(healAmount * 1.25);
+          healAmount = Math.floor(healAmount * 1.20); // Dikurangi dari 1.25
         }
         healAmount = Math.floor(healAmount);
         pHP = Math.min(pStats.maxHp, pHP + healAmount);
@@ -314,58 +356,59 @@ function simulateCombat(player, monster) {
 
       } else if (usedSkill.type === 'heal_mp') {
         if (usedSkill.key === 'mana_surge') {
-          const mpAmount = Math.floor((pStats.int * 1.0) + 15);
+          const mpAmount = Math.floor((pStats.int * 0.8) + 10); // Dikurangi
           pMP = Math.min(pStats.maxMp, pMP + mpAmount);
           actionText += `✨ Memulihkan *+${mpAmount} MP* (${pMP}/${pStats.maxMp}).\n`;
         }
 
       } else if (usedSkill.type === 'buff') {
         if (usedSkill.key === 'iron_will') {
-          const healAmount = Math.floor(pStats.vit * 1.5 + 10);
+          const healAmount = Math.floor(pStats.vit * 1.2 + 5); // Dikurangi
           pHP = Math.min(pStats.maxHp, pHP + healAmount);
           actionText += `🛡 Defense meningkat, memulihkan *+${healAmount} HP*.\n`;
         } else if (usedSkill.key === 'holy_barrier') {
-          pShield = Math.floor(pStats.vit * 3.0);
+          pShield = Math.floor(pStats.vit * 2.5); // Dikurangi dari 3.0
           actionText += `🛡 Shield menyerap *${pShield} damage* diaktifkan.\n`;
         } else if (usedSkill.key === 'shadow_step') {
-          pEvaBonus = 25;
-          actionText += `💨 Evasion meningkat +25%.\n`;
+          pEvaBonus = 20; // Dikurangi dari 25
+          actionText += `💨 Evasion meningkat +20%.\n`;
         } else if (usedSkill.key === 'focus_aim') {
-          pCritBonus = 20;
-          actionText += `🎯 Akurasi & Crit Rate meningkat +20%.\n`;
+          pCritBonus = 15; // Dikurangi dari 20
+          actionText += `🎯 Akurasi & Crit Rate meningkat +15%.\n`;
         } else if (usedSkill.key === 'rage') {
-          pStrBuff = 1.4;
-          pDefDebuff = 0.8;
-          actionText += `😡 Memasuki mode RAGE! ATK +40%, DEF -20%.\n`;
+          pStrBuff = 1.35; // Dikurangi dari 1.4
+          pDefDebuff = 0.7; // Lebih besar penalty, dari 0.8
+          actionText += `😡 Memasuki mode RAGE! ATK +35%, DEF -30%.\n`;
         }
       }
 
     } else {
       // Basic Physical Attack
       actionText += `🗡 Menyerang biasa.\n`;
-      const mEvasion = 2 + (monster.level * 0.5);
-      const finalAcc = pStats.accuracy + (pCritBonus > 0 ? 20 : 0);
-      const playerHitChance = Math.max(50, Math.min(98, finalAcc - mEvasion));
+      // Monster evasion lebih tinggi
+      const mEvasion = 8 + (monster.level * 1.0);
+      const finalAcc = pStats.accuracy + (pCritBonus > 0 ? 15 : 0);
+      const playerHitChance = Math.max(35, Math.min(96, finalAcc - mEvasion));
       const isHit = Math.random() * 100 <= playerHitChance;
       
       if (!isHit) {
-        actionText += `💨 Serangan meleset! (Monster menghindar)\n`;
+        actionText += `💨 Serangan meleset! (Monster menghindar) [Akurasi: ${playerHitChance}%]\n`;
       } else {
-        const isCrit = Math.random() * 100 <= pStats.critRate + (pCritBonus > 0 ? 20 : 0);
-        let dmg = pStats.patk * pStrBuff + Math.floor(Math.random() * 5);
+        const isCrit = Math.random() * 100 <= pStats.critRate + (pCritBonus > 0 ? 15 : 0);
+        let dmg = pStats.patk * pStrBuff + Math.floor(Math.random() * 3);
         const actualMDefense = hasPassive('armor_piercing') ? Math.floor(mDefense * 0.70) : mDefense;
-        const minDmg = Math.max(2, Math.ceil(dmg * 0.20));
+        const minDmg = Math.max(1, Math.ceil(dmg * 0.08)); // Dikurangi dari 0.20
         let damage = Math.max(minDmg, dmg - actualMDefense);
         
         if (isCrit) {
-          const critMult = hasPassive('shadow_assault') ? 2.0 : 1.5;
+          const critMult = hasPassive('shadow_assault') ? 1.8 : 1.4;
           damage = Math.floor(damage * critMult);
           actionText += `💥 *CRITICAL HIT!* `;
         }
 
         if (hasPassive('low_hp_frenzy')) {
           const hpLossPercent = (pStats.maxHp - pHP) / pStats.maxHp;
-          const frenzyMult = 1.0 + (hpLossPercent * 0.5);
+          const frenzyMult = 1.0 + (hpLossPercent * 0.4);
           damage = Math.floor(damage * frenzyMult);
         }
         
@@ -375,16 +418,16 @@ function simulateCombat(player, monster) {
       }
     }
 
-    // Serangan Asisten Pet (jika player hit dan pet bisa menyerang)
+    // Serangan Asisten Pet (dikurangi damage)
     if (pDamage > 0 && pStats.activePet) {
       const pet = pStats.activePet;
       let petDamage = 0;
       
       if (pet.tier === 'SS') {
-        const mul = 0.5 + Math.random() * 0.5;
+        const mul = 0.3 + Math.random() * 0.3; // Dikurangi dari 0.5-1.0
         petDamage = Math.floor(pDamage * mul);
       } else if (pet.tier === 'SSS') {
-        const mul = 1.5 + Math.random() * 0.5;
+        const mul = 0.8 + Math.random() * 0.4; // Dikurangi dari 1.5-2.0
         petDamage = Math.floor(pDamage * mul);
       }
       
@@ -402,7 +445,7 @@ function simulateCombat(player, monster) {
     }
 
     // ==========================================
-    // 2. GILIRAN MONSTER
+    // 2. GILIRAN MONSTER (LEBIH KERAS)
     // ==========================================
     let monsterText = "";
     
@@ -410,37 +453,38 @@ function simulateCombat(player, monster) {
       monsterText += `💫 Musuh pusing (Stun) dan melewatkan giliran turn ini!\n`;
       bossStunned = false;
     } else {
-      // Cek Evasion Player & Akurasi Monster
-      const mAccuracy = 90 + monster.level * 0.2;
-      const monsterHitChance = Math.max(40, Math.min(95, mAccuracy - (pStats.evasionRate + pEvaBonus)));
+      // Monster accuracy lebih tinggi: 85 + level * 0.8 (naik dari 90 + level * 0.2)
+      const mAccuracy = 85 + monster.level * 0.8;
+      const monsterHitChance = Math.max(45, Math.min(92, mAccuracy - (pStats.evasionRate + pEvaBonus)));
       const isHitByMonster = Math.random() * 100 <= monsterHitChance;
 
       if (!isHitByMonster) {
         monsterText += `💨 Evasion! Kamu menghindari serangan *${monster.name}*.\n`;
       } else {
-        let mDmg = mAttack + Math.floor(Math.random() * 4);
+        let mDmg = mAttack + Math.floor(Math.random() * (4 + monster.level * 0.3));
         let pDef = (pStats.pdef + (pStats.pdef * pDefBonus / 100)) * pDefDebuff;
-        const minMonsterDmg = Math.max(2, Math.ceil(mAttack * 0.20));
+        // Minimum monster damage lebih tinggi (15% base, naik dari 20% tapi base ATK jauh lebih tinggi)
+        const minMonsterDmg = Math.max(3, Math.ceil(mAttack * 0.15));
         let damage = Math.max(minMonsterDmg, mDmg - pDef);
         
-        // 8% chance monster critical hit
-        const mCrit = Math.random() < 0.08;
+        // 14% chance monster critical hit (naik dari 8%)
+        const mCrit = Math.random() < 0.14;
         if (mCrit) {
-          damage = Math.floor(damage * 1.5);
+          damage = Math.floor(damage * 1.6); // Crit damage naik dari 1.5
           monsterText += `🔥 *Monster Critical!* `;
         }
         
         let finalDamage = Math.floor(damage);
         
-        // Pasif Warrior: Shield Block
-        if (hasPassive('shield_block') && Math.random() < 0.12 && finalDamage > 0) {
+        // Pasif Warrior: Shield Block (dikurangi dari 12% → 8%)
+        if (hasPassive('shield_block') && Math.random() < 0.08 && finalDamage > 0) {
           monsterText += `🛡️ *Shield Block!* Kamu memblokir seluruh damage dari *${monster.name}*!\n`;
           finalDamage = 0;
         }
 
-        // Pasif Mage: Mana Shield
+        // Pasif Mage: Mana Shield (dikurangi absorb dari 20% → 15%)
         if (hasPassive('mana_shield') && finalDamage > 0 && pMP > 0) {
-          const dmgToAbsorb = Math.floor(finalDamage * 0.20);
+          const dmgToAbsorb = Math.floor(finalDamage * 0.15);
           const mpNeeded = Math.ceil(dmgToAbsorb / 2);
           const actualMpCost = Math.min(pMP, mpNeeded);
           const actualDmgAbsorbed = actualMpCost * 2;
@@ -449,9 +493,9 @@ function simulateCombat(player, monster) {
           monsterText += `🔮 *Mana Shield!* Menyerap *${actualDmgAbsorbed} damage* menggunakan *${actualMpCost} MP*.\n`;
         }
 
-        // Pasif Paladin: Divine Absorb
+        // Pasif Paladin: Divine Absorb (dikurangi dari 8% → 5%)
         if (hasPassive('divine_absorb') && finalDamage > 0) {
-          const mpGained = Math.max(1, Math.floor(finalDamage * 0.08));
+          const mpGained = Math.max(1, Math.floor(finalDamage * 0.05));
           pMP = Math.min(pStats.maxMp, pMP + mpGained);
           monsterText += `✨ *Divine Absorb!* Mengubah damage menjadi *+${mpGained} MP*.\n`;
         }
@@ -478,17 +522,17 @@ function simulateCombat(player, monster) {
 
     log += monsterText;
 
-    // Ticking Burn/Poison status effects at end of turn
+    // Ticking Burn/Poison status effects at end of turn (dikurangi sedikit)
     if (mHP > 0) {
       let tickText = "";
       if (burnTurns > 0) {
-        const burnDmg = Math.floor(pStats.int * 1.0);
+        const burnDmg = Math.floor(pStats.int * 0.8); // Dikurangi dari 1.0
         mHP -= burnDmg;
         burnTurns--;
         tickText += `🔥 Monster terbakar: *-${burnDmg} HP* (Sisa ${burnTurns} turn)\n`;
       }
       if (poisonTurns > 0) {
-        const poisonDmg = Math.floor(pStats.dex * 0.8);
+        const poisonDmg = Math.floor(pStats.dex * 0.6); // Dikurangi dari 0.8
         mHP -= poisonDmg;
         poisonTurns--;
         tickText += `🤢 Monster terkena racun: *-${poisonDmg} HP* (Sisa ${poisonTurns} turn)\n`;
@@ -561,10 +605,10 @@ function simulateDuel(p1, p2) {
       const jobKey = attacker.job || 'warrior';
       const jobConfig = classes.jobs[jobKey];
 
-      // Skill selection
+      // Skill selection (75% chance)
       if (jobConfig && jobConfig.skills && jobConfig.skills.length > 0) {
         const canCast = jobConfig.skills.filter(s => atkMP >= s.mpCost);
-        if (canCast.length > 0 && Math.random() < 0.6) {
+        if (canCast.length > 0 && Math.random() < 0.75) {
           if (jobKey === 'cleric' && atkHP < attackerStats.maxHp * 0.5) {
             usedSkill = canCast.find(s => s.key === 'cure') || canCast[0];
           } else if (jobKey === 'paladin' && atkHP < attackerStats.maxHp * 0.6 && shieldAtk <= 0) {
@@ -616,19 +660,19 @@ function simulateDuel(p1, p2) {
           }
 
           const isMagic = usedSkill.damageType === 'magic';
-          const finalAcc = attackerStats.accuracy + (critBonusAtk > 0 ? 20 : 0);
+          const finalAcc = attackerStats.accuracy + (critBonusAtk > 0 ? 15 : 0);
           const finalEva = defenderStats.evasionRate + newEvaBonusDef;
-          const hitChance = Math.max(50, Math.min(98, finalAcc - finalEva));
+          const hitChance = Math.max(35, Math.min(96, finalAcc - finalEva));
           const isHit = isMagic || (Math.random() * 100 <= hitChance);
 
           if (!isHit) {
             turnLog += `💨 Serangan meleset! (*${defender.name}* menghindar)\n`;
           } else {
-            const isCrit = usedSkill.key === 'sneak_attack' || (Math.random() * 100 <= attackerStats.critRate + (critBonusAtk > 0 ? 20 : 0));
-            const minDmg = Math.max(5, Math.floor(baseDmg * 0.15));
+            const isCrit = usedSkill.key === 'sneak_attack' || (Math.random() * 100 <= attackerStats.critRate + (critBonusAtk > 0 ? 15 : 0));
+            const minDmg = Math.max(3, Math.floor(baseDmg * 0.08));
             let damage = Math.max(minDmg, baseDmg - defenderStats.pdef);
             if (isCrit) {
-              damage = Math.floor(damage * 1.5);
+              damage = Math.floor(damage * 1.4);
               turnLog += `💥 *CRITICAL HIT!* `;
             }
             pDamage = Math.floor(damage);
@@ -654,10 +698,10 @@ function simulateDuel(p1, p2) {
           } else if (usedSkill.type === 'heal') {
           let healAmount = 0;
           if (usedSkill.key === 'cure') {
-            healAmount = (attackerStats.int * 2.0) + (attackerStats.vit * 1.0);
+            healAmount = (attackerStats.int * 1.8) + (attackerStats.vit * 0.8);
           } else if (usedSkill.key === 'chakra') {
-            healAmount = (attackerStats.str * strBuffAtk * 0.5) + 20;
-            newAtkMP = Math.min(attackerStats.maxMp, newAtkMP + (attackerStats.int * 1.0) + 5);
+            healAmount = (attackerStats.str * strBuffAtk * 0.4) + 15;
+            newAtkMP = Math.min(attackerStats.maxMp, newAtkMP + (attackerStats.int * 0.8) + 3);
             turnLog += `🧘 Memulihkan MP.\n`;
           }
           healAmount = Math.floor(healAmount);
@@ -665,47 +709,47 @@ function simulateDuel(p1, p2) {
           turnLog += `💚 Memulihkan *+${healAmount} HP* (${newAtkHP}/${attackerStats.maxHp}).\n`;
         } else if (usedSkill.type === 'heal_mp') {
           if (usedSkill.key === 'mana_surge') {
-            const mpAmount = Math.floor((attackerStats.int * 1.0) + 15);
+            const mpAmount = Math.floor((attackerStats.int * 0.8) + 10);
             newAtkMP = Math.min(attackerStats.maxMp, newAtkMP + mpAmount);
             turnLog += `✨ Memulihkan *+${mpAmount} MP* (${newAtkMP}/${attackerStats.maxMp}).\n`;
           }
         } else if (usedSkill.type === 'buff') {
           if (usedSkill.key === 'iron_will') {
-            const healAmount = Math.floor(attackerStats.vit * 1.5 + 10);
+            const healAmount = Math.floor(attackerStats.vit * 1.2 + 5);
             newAtkHP = Math.min(attackerStats.maxHp, newAtkHP + healAmount);
             turnLog += `🛡 Defense meningkat, memulihkan *+${healAmount} HP*.\n`;
           } else if (usedSkill.key === 'holy_barrier') {
-            newShieldAtk = Math.floor(attackerStats.vit * 3.0);
+            newShieldAtk = Math.floor(attackerStats.vit * 2.5);
             turnLog += `🛡 Shield menyerap *${newShieldAtk} damage* diaktifkan.\n`;
           } else if (usedSkill.key === 'shadow_step') {
-            newEvaBonusDef = 25;
-            turnLog += `💨 Evasion meningkat +25%.\n`;
+            newEvaBonusDef = 20;
+            turnLog += `💨 Evasion meningkat +20%.\n`;
           } else if (usedSkill.key === 'focus_aim') {
-            newCritBonusAtk = 20;
-            turnLog += `🎯 Akurasi & Crit Rate meningkat +20%.\n`;
+            newCritBonusAtk = 15;
+            turnLog += `🎯 Akurasi & Crit Rate meningkat +15%.\n`;
           } else if (usedSkill.key === 'rage') {
-            newStrBuffAtk = 1.4;
-            newDefDebuffAtk = 0.8;
-            turnLog += `😡 Mode RAGE! ATK +40%, DEF -20%.\n`;
+            newStrBuffAtk = 1.35;
+            newDefDebuffAtk = 0.7;
+            turnLog += `😡 Mode RAGE! ATK +35%, DEF -30%.\n`;
           }
         }
       } else {
         // Basic Attack
         turnLog += `👉 *${attacker.name}* menyerang biasa.\n`;
-        const finalAcc = attackerStats.accuracy + (critBonusAtk > 0 ? 20 : 0);
+        const finalAcc = attackerStats.accuracy + (critBonusAtk > 0 ? 15 : 0);
         const finalEva = defenderStats.evasionRate + newEvaBonusDef;
-        const hitChance = Math.max(50, Math.min(98, finalAcc - finalEva));
+        const hitChance = Math.max(35, Math.min(96, finalAcc - finalEva));
         const isHit = Math.random() * 100 <= hitChance;
 
         if (!isHit) {
           turnLog += `💨 Serangan meleset! (*${defender.name}* menghindar)\n`;
         } else {
-          const isCrit = Math.random() * 100 <= attackerStats.critRate + (critBonusAtk > 0 ? 20 : 0);
-          let dmg = attackerStats.patk * strBuffAtk + Math.floor(Math.random() * 5);
-          const minDmg = Math.max(1, Math.floor(dmg * 0.15));
+          const isCrit = Math.random() * 100 <= attackerStats.critRate + (critBonusAtk > 0 ? 15 : 0);
+          let dmg = attackerStats.patk * strBuffAtk + Math.floor(Math.random() * 3);
+          const minDmg = Math.max(1, Math.floor(dmg * 0.08));
           let damage = Math.max(minDmg, dmg - defenderStats.pdef);
           if (isCrit) {
-            damage = Math.floor(damage * 1.5);
+            damage = Math.floor(damage * 1.4);
             turnLog += `💥 *CRITICAL HIT!* `;
           }
           pDamage = Math.floor(damage);
@@ -729,12 +773,12 @@ function simulateDuel(p1, p2) {
         }
       }
 
-      // Pet attack bonus
+      // Pet attack bonus (dikurangi)
       if (pDamage > 0 && attackerStats.activePet) {
         const pet = attackerStats.activePet;
         let petDamage = 0;
-        if (pet.tier === 'SS') petDamage = Math.floor(pDamage * (0.5 + Math.random() * 0.5));
-        else if (pet.tier === 'SSS') petDamage = Math.floor(pDamage * (1.5 + Math.random() * 0.5));
+        if (pet.tier === 'SS') petDamage = Math.floor(pDamage * (0.3 + Math.random() * 0.3));
+        else if (pet.tier === 'SSS') petDamage = Math.floor(pDamage * (0.8 + Math.random() * 0.4));
 
         if (petDamage > 0) {
           newDefHP -= petDamage;

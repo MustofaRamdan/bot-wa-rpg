@@ -439,53 +439,89 @@ const jobs = {
   }
 };
 
-// === STAT FORMULAS ===
+// === STAT FORMULAS (OVERHAUL - Setiap stat SANGAT berpengaruh) ===
 
 // Menghitung Max HP berdasarkan VIT dan Level
+// VIT sangat krusial: tanpa VIT tinggi, HP sangat rendah
 function getMaxHp(level, vit) {
-  return Math.floor(100 + (level * 12) + (vit * 8));
+  const base = 60;
+  const levelScale = level * 6;
+  const vitScale = vit * 18;
+  const vitExponential = Math.floor(Math.pow(vit, 1.35) * 0.6);
+  return Math.floor(base + levelScale + vitScale + vitExponential);
 }
 
 // Menghitung Max MP berdasarkan INT dan Level
+// INT sangat krusial: tanpa INT, hampir tidak bisa pakai skill
 function getMaxMp(level, int) {
-  return Math.floor(30 + (level * 5) + (int * 4));
+  const base = 15;
+  const levelScale = level * 2;
+  const intScale = int * 12;
+  const intExponential = Math.floor(Math.pow(int, 1.25) * 0.4);
+  return Math.floor(base + levelScale + intScale + intExponential);
 }
 
 // Menghitung Physical Attack
+// STR sangat menentukan: tanpa STR, damage fisik sangat kecil
 function getPhysicalAttack(str, weaponBonus = 0) {
-  return Math.floor(10 + (str * 1.5) + weaponBonus);
+  const base = 3;
+  const strScale = str * 3.0;
+  const strExponential = Math.floor(Math.pow(str, 1.2) * 0.4);
+  return Math.floor(base + strScale + strExponential + weaponBonus);
 }
 
 // Menghitung Magic Attack
+// INT sangat menentukan: tanpa INT, magic damage minimal
 function getMagicAttack(int, weaponBonus = 0) {
-  return Math.floor(5 + (int * 1.8) + weaponBonus);
+  const base = 2;
+  const intScale = int * 3.2;
+  const intExponential = Math.floor(Math.pow(int, 1.2) * 0.4);
+  return Math.floor(base + intScale + intExponential + weaponBonus);
 }
 
 // Menghitung Physical Defense
+// VIT sangat penting: tanpa VIT, player menerima damage penuh
 function getPhysicalDefense(vit, armorBonus = 0) {
-  return Math.floor(5 + (vit * 0.8) + armorBonus);
+  const base = 1;
+  const vitScale = vit * 2.2;
+  const vitExponential = Math.floor(Math.pow(vit, 1.15) * 0.25);
+  return Math.floor(base + vitScale + vitExponential + armorBonus);
 }
 
-// Menghitung Critical Rate (Maksimal 40%)
+// Menghitung Critical Rate (Maksimal 55%)
+// AGI sangat menentukan: setiap poin AGI = +0.6% crit
 function getCriticalRate(agi) {
-  return Math.min(40, Math.floor(3 + (agi * 0.25)));
+  return Math.min(55, Math.floor(1 + (agi * 0.6)));
 }
 
-// Menghitung Evasion Rate (Maksimal 50%)
+// Menghitung Evasion Rate (Maksimal 60%)
+// AGI sangat menentukan: setiap poin AGI = +0.7% evasion
 function getEvasionRate(agi) {
-  return Math.min(50, Math.floor(2 + (agi * 0.3)));
+  return Math.min(60, Math.floor(1 + (agi * 0.7)));
 }
 
 // Menghitung Akurasi (Maksimal 98%)
+// DEX SANGAT KRUSIAL: base accuracy rendah (55%), tanpa DEX pasti sering miss!
 function getAccuracyRate(dex) {
-  return Math.min(98, Math.floor(80 + (dex * 0.2)));
+  return Math.min(98, Math.floor(55 + (dex * 0.65)));
 }
 
+// EXP Curve yang sangat curam — endgame butuh SANGAT lama
 function getExpNeeded(level) {
-  if (level >= 10) {
-    return Math.floor(100 * Math.pow(level, 2.2));
+  if (level >= 40) {
+    // Tier 4: Endgame (Level 40-50) — butuh berbulan-bulan
+    return Math.floor(400 * Math.pow(level, 3.0));
   }
-  return Math.floor(100 * Math.pow(level, 1.5));
+  if (level >= 25) {
+    // Tier 3: Late game (Level 25-39) — sangat lambat
+    return Math.floor(250 * Math.pow(level, 2.7));
+  }
+  if (level >= 10) {
+    // Tier 2: Mid game (Level 10-24) — mulai terasa berat
+    return Math.floor(180 * Math.pow(level, 2.5));
+  }
+  // Tier 1: Early game (Level 1-9) — sudah cukup berat
+  return Math.floor(150 * Math.pow(level, 1.9));
 }
 
 module.exports = {
