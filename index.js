@@ -13,23 +13,20 @@ http.createServer((req, res) => {
 
 const { 
   default: makeWASocket, 
-  useMultiFileAuthState, 
   DisconnectReason,
   fetchLatestBaileysVersion,
-  Browsers
+  Browsers,
+  makeCacheableSignalKeyStore
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 
 const db = require('./src/database/db');
+const { useMongoDBAuthState } = require('./src/database/session');
 const { routeCommand } = require('./src/commands/index');
 const { worldBossTemplates } = require('./src/config/monsters');
 const { spawnWorldBoss } = require('./src/commands/battle');
-
-// Setup directory penyimpanan session
-const AUTH_DIR = path.resolve(__dirname, 'data/auth_session');
-if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 // Set penyimpanan chats yang dikenal untuk broadcast bos
 const CHATS_PATH = path.resolve(__dirname, 'data/known_chats.json');
@@ -53,8 +50,9 @@ function saveKnownChats() {
 async function startBot() {
   console.log("🚀 Menghubungkan ke WhatsApp Server via Baileys...");
 
-  // Mengambil state otentikasi multi-file
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  // Mengambil state otentikasi dari MongoDB
+  const sessionId = process.env.SESSION_ID || 'rpg-bot-session';
+  const { state, saveCreds } = await useMongoDBAuthState(sessionId);
   
   // Mengambil versi Baileys terbaru
   const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -67,10 +65,13 @@ async function startBot() {
     process.exit(1);
   }
 
-  // Inisialisasi WASocket
+  // Inisialisasi WASocket dengan caching key store untuk performa optimal
   const sock = makeWASocket({
     version,
-    auth: state,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+    },
     logger: pino({ level: 'silent' }), // Log sunyi agar tidak spam terminal
     printQRInTerminal: false,           // Selalu gunakan pairing code, jangan print QR
     browser: Browsers.ubuntu('Chrome')  // Browser resmi yang dikelola library Baileys agar aman & lolos pairing code
@@ -109,7 +110,7 @@ async function startBot() {
         console.log("🔄 Mencoba menghubungkan kembali...");
         startBot();
       } else {
-        console.log("🛑 Sesi Anda telah berakhir (Logged Out). Harap hapus folder data/auth_session dan jalankan ulang untuk scan QR baru.");
+        console.log("🛑 Sesi Anda telah berakhir (Logged Out). Harap jalankan 'node clean_session.js' untuk membersihkan sesi lama di database dan jalankan ulang bot.");
       }
     } else if (connection === 'open') {
       console.clear();
